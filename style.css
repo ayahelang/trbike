@@ -6,8 +6,8 @@
 }
 
 body {
-    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
-    color: white;
+    background: #ffffff;
+    color: #1a1a1a;
     min-height: 100vh;
 }
 
@@ -20,6 +20,7 @@ body {
     padding: 20px;
 }
 
+/* LEFT SIDE */
 .content {
     flex: 1;
     max-width: 500px;
@@ -27,19 +28,19 @@ body {
 
 h1 {
     font-size: 48px;
-    color: #00e5ff;
-    letter-spacing: 1px;
+    color: #007c91;
 }
 
 .tagline {
     margin: 10px 0 20px;
-    color: #b0bec5;
+    color: #555;
 }
 
 h2 {
     margin-bottom: 20px;
 }
 
+/* COUNTDOWN */
 #countdown {
     display: flex;
     gap: 15px;
@@ -47,12 +48,12 @@ h2 {
 }
 
 .time-box {
-    background: rgba(255,255,255,0.08);
+    background: #f5f7fa;
     padding: 15px;
     border-radius: 10px;
     text-align: center;
     min-width: 70px;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid #e0e0e0;
 }
 
 .time-box span {
@@ -63,25 +64,24 @@ h2 {
 
 .footer-text {
     margin-top: 20px;
-    color: #90a4ae;
+    color: #777;
 }
 
+/* RIGHT SIDE */
 .illustration {
     flex: 1;
     text-align: center;
 }
 
-.illustration img {
+.logo {
     width: 80%;
     max-width: 420px;
+
+    /* AUTO ubah hitam jadi warna modern */
+    filter: brightness(0) saturate(100%) invert(20%) sepia(20%) saturate(600%) hue-rotate(160deg);
 }
 
-/* subtle glow */
-h1 {
-    text-shadow: 0 0 8px rgba(0,229,255,0.6);
-}
-
-/* Responsive */
+/* RESPONSIVE */
 @media (max-width: 768px) {
     .container {
         flex-direction: column;
