@@ -15,7 +15,7 @@ const countdown = () => {
     document.getElementById("seconds").innerText = seconds;
 
     if (distance < 0) {
-        document.getElementById("countdown").innerHTML = "🚀 TrBike sudah siap digunakan!";
+        document.getElementById("countdown").innerHTML = "🚀 TRBike sudah siap digunakan!";
     }
 };
 
