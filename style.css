@@ -1,89 +1,94 @@
 * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: "Segoe UI", sans-serif;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Segoe UI", sans-serif;
 }
 
 body {
-  background: #ffffff;
+    background: #ffffff;
+    color: #1a1a1a;
+    min-height: 100vh;
 }
 
-/* MAP */
-#map {
-  height: 100vh;
-  width: 100%;
+.container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
 }
 
-/* HEADER */
-.header {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 1000;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 10px 14px;
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+/* LEFT SIDE */
+.content {
+    flex: 1;
+    max-width: 500px;
 }
 
-.header h1 {
-  font-size: 16px;
-  color: #007c91;
+h1 {
+    font-size: 48px;
+    color: #007c91;
 }
 
-.sub {
-  font-size: 12px;
-  color: #666;
+.tagline {
+    margin: 10px 0 20px;
+    color: #555;
 }
 
-/* BOTTOM SHEET */
-.bottom-sheet {
-  position: fixed;
-  bottom: 0;
-  width: 100%;
-  background: white;
-  padding: 16px;
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+h2 {
+    margin-bottom: 20px;
 }
 
-.sheet-content h3 {
-  font-size: 16px;
-  margin-bottom: 5px;
+/* COUNTDOWN */
+#countdown {
+    display: flex;
+    gap: 15px;
+    margin: 20px 0;
 }
 
-.sheet-content p {
-  font-size: 13px;
-  color: #666;
+.time-box {
+    background: #f5f7fa;
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    min-width: 70px;
+    border: 1px solid #e0e0e0;
 }
 
-/* BUTTON */
-.order-btn {
-  width: 100%;
-  margin-top: 12px;
-  padding: 14px;
-  border-radius: 30px;
-  border: none;
-  background: #007c91;
-  color: white;
-  font-size: 16px;
-  cursor: pointer;
+.time-box span {
+    font-size: 24px;
+    font-weight: bold;
+    display: block;
 }
 
-.order-btn:active {
-  transform: scale(0.97);
+.footer-text {
+    margin-top: 20px;
+    color: #777;
 }
 
-/* RESPONSIVE TABLET */
-@media (min-width: 768px) {
-  .bottom-sheet {
-    width: 400px;
-    left: 50%;
-    transform: translateX(-50%);
-    border-radius: 20px;
-    bottom: 20px;
-  }
+/* RIGHT SIDE */
+.illustration {
+    flex: 1;
+    text-align: center;
+}
+
+.logo {
+    width: 80%;
+    max-width: 420px;
+
+    /* AUTO ubah hitam jadi warna modern */
+    filter: brightness(0) saturate(100%) invert(20%) sepia(20%) saturate(600%) hue-rotate(160deg);
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    #countdown {
+        justify-content: center;
+    }
 }

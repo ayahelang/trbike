@@ -2,29 +2,30 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: "Segoe UI", sans-serif;
 }
 
 body {
   background: #ffffff;
 }
 
-/* MAP FULL SCREEN */
+/* MAP */
 #map {
   height: 100vh;
   width: 100%;
 }
 
-/* HEADER (optional biar keren dikit) */
+/* HEADER */
 .header {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 12px;
+  left: 12px;
   z-index: 1000;
-  background: white;
-  padding: 10px 15px;
-  border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 10px 14px;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .header h1 {
@@ -32,25 +33,57 @@ body {
   color: #007c91;
 }
 
-/* BUTTON ORDER */
-.order-btn {
-  position: absolute;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-
-  background: #007c91;
-  color: white;
-  padding: 15px 25px;
-  border-radius: 30px;
-  border: none;
-  font-size: 16px;
-  cursor: pointer;
-
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+.sub {
+  font-size: 12px;
+  color: #666;
 }
 
-.order-btn:hover {
-  background: #005f6b;
+/* BOTTOM SHEET */
+.bottom-sheet {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  background: white;
+  padding: 16px;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+}
+
+.sheet-content h3 {
+  font-size: 16px;
+  margin-bottom: 5px;
+}
+
+.sheet-content p {
+  font-size: 13px;
+  color: #666;
+}
+
+/* BUTTON */
+.order-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 30px;
+  border: none;
+  background: #007c91;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.order-btn:active {
+  transform: scale(0.97);
+}
+
+/* RESPONSIVE TABLET */
+@media (min-width: 768px) {
+  .bottom-sheet {
+    width: 400px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: 20px;
+    bottom: 20px;
+  }
 }

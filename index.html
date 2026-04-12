@@ -1,34 +1,54 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TRBike</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRBike - Coming Soon</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-    <link rel="stylesheet" href="style.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<div class="container">
 
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
-  </head>
-  <body>
-    <div class="header">
-      <h1>🛵 TRBike</h1>
-      <p class="sub">Transportasi adil & manusiawi</p>
+    <div class="content">
+        <a href="dev/index.html"><h1>🛵 TRBike</h1></a>
+
+        <p class="tagline">
+            Ojol with wise human policy
+        </p>
+
+        <h2>Website sedang dalam pengembangan</h2>
+
+        <div id="countdown">
+            <div class="time-box">
+                <span id="days">00</span>
+                <small>Hari</small>
+            </div>
+            <div class="time-box">
+                <span id="hours">00</span>
+                <small>Jam</small>
+            </div>
+            <div class="time-box">
+                <span id="minutes">00</span>
+                <small>Menit</small>
+            </div>
+            <div class="time-box">
+                <span id="seconds">00</span>
+                <small>Detik</small>
+            </div>
+        </div>
+
+        <p class="footer-text">
+            Lebih dari sekadar transportasi — ini tentang manusia 🤝
+        </p>
     </div>
 
-    <div id="map"></div>
-
-    <!-- Bottom Sheet -->
-    <div class="bottom-sheet" id="sheet">
-      <div class="sheet-content">
-        <h3 id="statusText">Siap memesan</h3>
-        <p id="infoText">Tekan tombol untuk mencari driver</p>
-      </div>
-
-      <button class="order-btn" onclick="orderRide()">Pesan TRBike</button>
+    <div class="illustration">
+        <img src="logo-trbike.png" class="logo" alt="Logo TRBike">
     </div>
 
-    <script src="script.js"></script>
-  </body>
+</div>
+
+<script src="script.js"></script>
+</body>
 </html>
