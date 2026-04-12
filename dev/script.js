@@ -5,15 +5,21 @@ const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // MAP
 const map = L.map('map').setView([-6.2, 106.8], 13);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: 'TRBike'
+}).addTo(map);
 
 // USER
 const userLat = -6.2;
 const userLng = 106.8;
 
-const userMarker = L.marker([userLat, userLng]).addTo(map)
-    .bindPopup("📍 Kamu").openPopup();
+const userMarker = L.marker([userLat, userLng])
+    .addTo(map)
+    .bindPopup("📍 Kamu")
+    .openPopup();
 
+// STATE
 let driverMarkers = [];
 let activeDriver = null;
 let travelDistance = 0;
@@ -21,7 +27,12 @@ let rideInterval = null;
 
 // LOAD DRIVER
 async function loadDrivers() {
-    let { data } = await client.from("drivers").select("*");
+    let { data, error } = await client.from("drivers").select("*");
+
+    if (error) {
+        console.error(error);
+        return;
+    }
 
     data.forEach(d => {
         let marker = L.marker([d.lat, d.lng])
@@ -29,13 +40,43 @@ async function loadDrivers() {
             .bindPopup("🛵 " + d.name);
 
         driverMarkers.push({
-            ...d,
+            id: d.id,
+            name: d.name,
+            lat: d.lat,
+            lng: d.lng,
             marker
         });
     });
 }
 
 loadDrivers();
+
+
+// 🚀 REALTIME UPDATE
+client
+    .channel('drivers-channel')
+    .on(
+        'postgres_changes',
+        {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'drivers'
+        },
+        payload => {
+            const updated = payload.new;
+
+            let driver = driverMarkers.find(d => d.id === updated.id);
+
+            if (driver) {
+                driver.lat = updated.lat;
+                driver.lng = updated.lng;
+
+                driver.marker.setLatLng([updated.lat, updated.lng]);
+            }
+        }
+    )
+    .subscribe();
+
 
 // DISTANCE
 function getDistance(lat1, lng1, lat2, lng2) {
@@ -45,7 +86,8 @@ function getDistance(lat1, lng1, lat2, lng2) {
     );
 }
 
-// 💰 FAIR PRICING (inti TRBike)
+
+// 💰 FAIR PRICING
 function calculatePrice(pickupDist, tripDist = 1) {
     const base = 8000;
     const pickupCost = pickupDist * 8000;
@@ -54,6 +96,7 @@ function calculatePrice(pickupDist, tripDist = 1) {
 
     return Math.round(base + pickupCost + tripCost + timeCost);
 }
+
 
 // ⚖️ KOMPENSASI
 function calculateCompensation(distance) {
@@ -64,7 +107,8 @@ function calculateCompensation(distance) {
     return Math.round(bbm + capek + waktu);
 }
 
-// 🚀 GERAK DRIVER
+
+// 🚀 GERAK DRIVER (SIMULASI LOCAL)
 function moveDriverToUser(driver) {
     let lat = driver.lat;
     let lng = driver.lng;
@@ -98,10 +142,14 @@ function moveDriverToUser(driver) {
     }, 300);
 }
 
+
 // ORDER
 function orderRide() {
 
-    if (driverMarkers.length === 0) return;
+    if (driverMarkers.length === 0) {
+        alert("Driver belum tersedia");
+        return;
+    }
 
     document.getElementById("statusText").innerText = "Mencari driver... 🔍";
     document.getElementById("infoText").innerText = "";
@@ -142,7 +190,8 @@ function orderRide() {
     }, 1500);
 }
 
-// ❌ CANCEL (fitur khas TRBike)
+
+// ❌ CANCEL
 function cancelRide() {
 
     if (!activeDriver) return;
