@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TRBike</title>
+    <title>TRBike Live Map</title>
 
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -14,20 +14,11 @@
   <body>
     <div class="header">
       <h1>🛵 TRBike</h1>
-      <p class="sub">Transportasi adil & manusiawi</p>
     </div>
 
     <div id="map"></div>
 
-    <!-- Bottom Sheet -->
-    <div class="bottom-sheet" id="sheet">
-      <div class="sheet-content">
-        <h3 id="statusText">Siap memesan</h3>
-        <p id="infoText">Tekan tombol untuk mencari driver</p>
-      </div>
-
-      <button class="order-btn" onclick="orderRide()">Pesan TRBike</button>
-    </div>
+    <button class="order-btn">Pesan TRBike</button>
 
     <script src="script.js"></script>
   </body>
