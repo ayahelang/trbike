@@ -9,20 +9,26 @@ const map = L.map('map').setView([-6.2, 106.8], 13);
 // TILE
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// USER POSITION (fake center dulu)
+// USER POSITION (sementara statis)
 const userLat = -6.2;
 const userLng = 106.8;
 
 // MARKER USER
 const userMarker = L.marker([userLat, userLng]).addTo(map)
-    .bindPopup("📍 Kamu");
+    .bindPopup("📍 Kamu")
+    .openPopup();
 
 // SIMPAN DRIVER
 let driverMarkers = [];
 
 // LOAD DRIVER
 async function loadDrivers() {
-    let { data } = await client.from("drivers").select("*");
+    let { data, error } = await client.from("drivers").select("*");
+
+    if (error) {
+        console.error("Error load drivers:", error);
+        return;
+    }
 
     data.forEach(d => {
         let marker = L.marker([d.lat, d.lng])
@@ -46,9 +52,42 @@ function getDistance(lat1, lng1, lat2, lng2) {
     );
 }
 
+// 🚀 GERAK DRIVER KE USER
+function moveDriverToUser(driver) {
+    let lat = driver.lat;
+    let lng = driver.lng;
+
+    const interval = setInterval(() => {
+
+        lat += (userLat - lat) * 0.05;
+        lng += (userLng - lng) * 0.05;
+
+        driver.marker.setLatLng([lat, lng]);
+
+        let dist = getDistance(lat, lng, userLat, userLng);
+
+        document.getElementById("statusText").innerText = "Driver menuju kamu 🚗";
+
+        if (dist < 0.001) {
+            clearInterval(interval);
+
+            document.getElementById("statusText").innerText = "Driver tiba 🎉";
+            document.getElementById("infoText").innerText = "Silakan naik 🙏";
+        }
+
+    }, 300);
+}
+
 // ORDER SYSTEM
 function orderRide() {
-    if (driverMarkers.length === 0) return;
+
+    if (driverMarkers.length === 0) {
+        alert("Driver belum tersedia");
+        return;
+    }
+
+    document.getElementById("statusText").innerText = "Mencari driver... 🔍";
+    document.getElementById("infoText").innerText = "";
 
     let nearest = null;
     let minDist = 999;
@@ -62,22 +101,28 @@ function orderRide() {
         }
     });
 
-    // highlight driver
-    nearest.marker.setIcon(
-        L.icon({
-            iconUrl: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
-            iconSize: [32, 32]
-        })
-    );
+    // delay biar realistis
+    setTimeout(() => {
 
-    // hitung tarif (simple dulu)
-    let price = Math.round(10000 + minDist * 100000);
+        // highlight driver
+        nearest.marker.setIcon(
+            L.icon({
+                iconUrl: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
+                iconSize: [32, 32]
+            })
+        );
 
-    // update UI
-    document.getElementById("statusText").innerText = "Driver ditemukan 🎉";
-    document.getElementById("infoText").innerText =
-        `${nearest.name} • Rp ${price.toLocaleString()}`;
+        // hitung tarif
+        let price = Math.round(10000 + minDist * 100000);
 
-    // zoom ke driver
-    map.setView([nearest.lat, nearest.lng], 15);
+        document.getElementById("statusText").innerText = "Driver ditemukan 🎉";
+        document.getElementById("infoText").innerText =
+            `${nearest.name} • Rp ${price.toLocaleString()}`;
+
+        map.setView([nearest.lat, nearest.lng], 15);
+
+        // 🚀 GERAK DRIVER
+        moveDriverToUser(nearest);
+
+    }, 1500);
 }
