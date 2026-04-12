@@ -7,7 +7,8 @@ const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const map = L.map('map').setView([-6.2, 106.8], 13);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: 'TRBike'
+    attribution: 'TRBike',
+    maxZoom: 19
 }).addTo(map);
 
 // USER
