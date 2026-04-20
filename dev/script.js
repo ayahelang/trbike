@@ -3,207 +3,175 @@ const SUPABASE_KEY = "sb_publishable_PBk-fCMKHLk0hVFqJ0XdGg_dwOgYET0";
 
 const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// MAP
-const map = L.map('map').setView([-6.2, 106.8], 13);
+let userLat = -6.2;
+let userLng = 106.8;
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: 'TRBike',
-    maxZoom: 19
-}).addTo(map);
+let map;
+let userMarker;
+let destinationMarker;
+let routeLine;
 
-// USER
-const userLat = -6.2;
-const userLng = 106.8;
-
-const userMarker = L.marker([userLat, userLng])
-    .addTo(map)
-    .bindPopup("📍 Kamu")
-    .openPopup();
-
-// STATE
 let driverMarkers = [];
-let activeDriver = null;
-let travelDistance = 0;
-let rideInterval = null;
+let selectedDistance = 0;
+
+// INIT
+window.onload = () => {
+    initMap();
+    getUserLocation();
+    loadDrivers();
+};
+
+// MAP
+function initMap() {
+    map = L.map('map').setView([userLat, userLng], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19
+    }).addTo(map);
+
+    // klik tujuan
+    map.on('click', function(e) {
+        setDestination(e.latlng.lat, e.latlng.lng);
+    });
+}
+
+// GPS
+function getUserLocation() {
+
+    navigator.geolocation.getCurrentPosition(
+
+        pos => {
+            userLat = pos.coords.latitude;
+            userLng = pos.coords.longitude;
+
+            map.setView([userLat, userLng], 15);
+
+            setUserMarker();
+        },
+
+        err => {
+            setUserMarker();
+        },
+
+        {
+            enableHighAccuracy: true
+        }
+    );
+}
+
+// USER MARKER
+function setUserMarker() {
+
+    if (userMarker) map.removeLayer(userMarker);
+
+    userMarker = L.marker([userLat, userLng])
+        .addTo(map)
+        .bindPopup("📍 Kamu")
+        .openPopup();
+}
+
+// DESTINATION
+function setDestination(lat, lng) {
+
+    if (destinationMarker) map.removeLayer(destinationMarker);
+    if (routeLine) map.removeLayer(routeLine);
+
+    destinationMarker = L.marker([lat, lng])
+        .addTo(map)
+        .bindPopup("🎯 Tujuan")
+        .openPopup();
+
+    routeLine = L.polyline([
+        [userLat, userLng],
+        [lat, lng]
+    ]).addTo(map);
+
+    selectedDistance = getDistance(userLat, userLng, lat, lng);
+
+    let price = calculateTripPrice(selectedDistance);
+
+    document.getElementById("statusText").innerText =
+        "Tujuan dipilih 🎯";
+
+    document.getElementById("infoText").innerText =
+        `Jarak ${selectedDistance.toFixed(2)} km • Estimasi Rp ${price.toLocaleString()}`;
+}
 
 // LOAD DRIVER
 async function loadDrivers() {
-    let { data, error } = await client.from("drivers").select("*");
 
-    if (error) {
-        console.error(error);
-        return;
-    }
+    let { data } = await client
+        .from("drivers")
+        .select("*");
 
     data.forEach(d => {
+
         let marker = L.marker([d.lat, d.lng])
             .addTo(map)
             .bindPopup("🛵 " + d.name);
 
         driverMarkers.push({
-            id: d.id,
-            name: d.name,
-            lat: d.lat,
-            lng: d.lng,
+            ...d,
             marker
         });
     });
 }
 
-loadDrivers();
-
-
-// 🚀 REALTIME UPDATE
-client
-    .channel('drivers-channel')
-    .on(
-        'postgres_changes',
-        {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'drivers'
-        },
-        payload => {
-            const updated = payload.new;
-
-            let driver = driverMarkers.find(d => d.id === updated.id);
-
-            if (driver) {
-                driver.lat = updated.lat;
-                driver.lng = updated.lng;
-
-                driver.marker.setLatLng([updated.lat, updated.lng]);
-            }
-        }
-    )
-    .subscribe();
-
-
-// DISTANCE
+// DISTANCE KM
 function getDistance(lat1, lng1, lat2, lng2) {
-    return Math.sqrt(
-        Math.pow(lat1 - lat2, 2) +
-        Math.pow(lng1 - lng2, 2)
-    );
+
+    const R = 6371;
+
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
 }
 
+// HARGA
+function calculateTripPrice(km) {
 
-// 💰 FAIR PRICING
-function calculatePrice(pickupDist, tripDist = 1) {
-    const base = 8000;
-    const pickupCost = pickupDist * 8000;
-    const tripCost = tripDist * 3000;
-    const timeCost = 2000;
+    let base = 8000;
+    let perKm = 2500;
 
-    return Math.round(base + pickupCost + tripCost + timeCost);
+    return Math.round(base + (km * perKm));
 }
-
-
-// ⚖️ KOMPENSASI
-function calculateCompensation(distance) {
-    const bbm = distance * 5000;
-    const capek = 3000;
-    const waktu = 2000;
-
-    return Math.round(bbm + capek + waktu);
-}
-
-
-// 🚀 GERAK DRIVER (SIMULASI LOCAL)
-function moveDriverToUser(driver) {
-    let lat = driver.lat;
-    let lng = driver.lng;
-
-    travelDistance = 0;
-
-    rideInterval = setInterval(() => {
-
-        let oldLat = lat;
-        let oldLng = lng;
-
-        lat += (userLat - lat) * 0.05;
-        lng += (userLng - lng) * 0.05;
-
-        driver.marker.setLatLng([lat, lng]);
-
-        let stepDist = getDistance(oldLat, oldLng, lat, lng);
-        travelDistance += stepDist;
-
-        document.getElementById("statusText").innerText = "Driver menuju kamu 🚗";
-
-        let dist = getDistance(lat, lng, userLat, userLng);
-
-        if (dist < 0.001) {
-            clearInterval(rideInterval);
-
-            document.getElementById("statusText").innerText = "Driver tiba 🎉";
-            document.getElementById("infoText").innerText = "Silakan naik 🙏";
-        }
-
-    }, 300);
-}
-
 
 // ORDER
 function orderRide() {
 
-    if (driverMarkers.length === 0) {
-        alert("Driver belum tersedia");
+    if (!destinationMarker) {
+        alert("Pilih tujuan dulu di peta");
         return;
     }
 
-    document.getElementById("statusText").innerText = "Mencari driver... 🔍";
-    document.getElementById("infoText").innerText = "";
-
-    let nearest = null;
-    let minDist = 999;
-
-    driverMarkers.forEach(d => {
-        let dist = getDistance(userLat, userLng, d.lat, d.lng);
-
-        if (dist < minDist) {
-            minDist = dist;
-            nearest = d;
-        }
-    });
+    document.getElementById("statusText").innerText =
+        "Mencari driver... 🔍";
 
     setTimeout(() => {
 
-        activeDriver = nearest;
+        document.getElementById("statusText").innerText =
+            "Driver ditemukan 🎉";
 
-        nearest.marker.setIcon(
-            L.icon({
-                iconUrl: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
-                iconSize: [32, 32]
-            })
-        );
-
-        let price = calculatePrice(minDist);
-
-        document.getElementById("statusText").innerText = "Driver ditemukan 🎉";
         document.getElementById("infoText").innerText =
-            `${nearest.name} • Rp ${price.toLocaleString()}`;
-
-        map.setView([nearest.lat, nearest.lng], 15);
-
-        moveDriverToUser(nearest);
+            "Driver menuju lokasi kamu";
 
     }, 1500);
 }
 
-
-// ❌ CANCEL
+// CANCEL
 function cancelRide() {
 
-    if (!activeDriver) return;
+    document.getElementById("statusText").innerText =
+        "Order dibatalkan ❌";
 
-    clearInterval(rideInterval);
-
-    let kompensasi = calculateCompensation(travelDistance);
-
-    document.getElementById("statusText").innerText = "Order dibatalkan ❌";
-    document.getElementById("infoText").innerText =
-        `Kompensasi driver: Rp ${kompensasi.toLocaleString()}`;
-
-    activeDriver = null;
+    document.getElementById("infoText").innerText = "";
 }
