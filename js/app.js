@@ -338,13 +338,17 @@ async function onCheckFare() {
     lastQuote = calculateFare(tripKm, pickupKm, "standard", rules);
     $("quoteCard").innerHTML = `
       <div class="price">${formatRupiah(lastQuote.total)}</div>
-      <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km</div>
+      <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km · BBM Rp${lastQuote.fuelPerKm}/km</div>
       <div class="row"><span>BBM perjalanan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
       <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
-      <div class="row"><span>Biaya layanan</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
-      <div class="row"><span>Pajak</span><span>${formatRupiah(lastQuote.tax)}</span></div>
-      <div class="row"><span>Pendapatan bersih</span><span>${formatRupiah(lastQuote.driverGross)}</span></div>
-      <div class="row total"><span>Total</span><span>${formatRupiah(lastQuote.total)}</span></div>`;
+      <div class="row"><span>Perawatan kendaraan (10%)</span><span>${formatRupiah(lastQuote.perawatan)}</span></div>
+      <div class="row"><span>Makan & kesehatan (13%)</span><span>${formatRupiah(lastQuote.makanKesehatan)}</span></div>
+      <div class="row"><span>Jasa driver (77%)</span><span>${formatRupiah(lastQuote.jasaDriver)}</span></div>
+      <div class="row"><span>Pendapatan bersih driver</span><span>${formatRupiah(lastQuote.pendapatanBersih)}</span></div>
+      <div class="row"><span>Biaya layanan (TRBike)</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
+      <div class="row"><span>Tarif sebelum PPN</span><span>${formatRupiah(lastQuote.beforePpn)}</span></div>
+      <div class="row"><span>PPN 11%</span><span>${formatRupiah(lastQuote.tax)}</span></div>
+      <div class="row total"><span>Total dibayar penumpang</span><span>${formatRupiah(lastQuote.total)}</span></div>`;
     // Instruksi TF/QRIS = nominal biaya layanan
     const feeHint = $("serviceFeeHint");
     if (feeHint) {

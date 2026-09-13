@@ -1,34 +1,25 @@
 {
   "fareRules": {
     "current": {
-      "fuelPricePerLiter": 12500,
-      "fuelEfficiencyKmPerLiter": 40,
-      "baseFare": 2500,
+      "fuelPerKm": 350,
+      "perawatanPercent": 0.10,
+      "makanKesehatanPercent": 0.13,
+      "jasaDriverPercent": 0.77,
       "serviceFeePercent": 0.17,
       "taxPercent": 0.11,
-      "pools": {
-        "maintenance": 0.10,
-        "labor": 0.10,
-        "health": 0.10,
-        "oldAge": 0.05,
-        "charity": 0.025,
-        "food": 0.075
-      },
       "classMultipliers": {
         "standard": 1.0,
         "comfort": 1.1,
         "premium": 1.2
       },
-      "version": "1.0.0-mvp",
-      "notes": "Parameter prototype. Harus divalidasi dengan riset lapangan dan benchmark kompetitor sebelum produksi."
+      "version": "2.0.0-bbm350",
+      "notes": "BBM Rp350/km. Driver 10%+13%+77% dari total BBM. Layanan 17% dari total BBM. PPN 11% dari (BBM+layanan)."
     }
   },
   "system": {
     "config": {
       "appName": "TRBike",
-      "motto": "Terbaik untuk Driver dan Penumpang",
-      "minAppVersion": "1.0.0",
-      "supportEmail": "support@trbike.local"
+      "motto": "Terbaik untuk Driver dan Penumpang"
     }
   }
 }
