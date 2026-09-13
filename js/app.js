@@ -675,6 +675,60 @@ function startLiveTracking(rideId, role) {
   unsubTrack = () => ref.off("value", handler);
 }
 
+
+// ===== ADMIN =====
+let adminPeriod = "month";
+let adminReport = null;
+
+function openAdmin() {
+  show($("adminModal"), true);
+  if (isAdminSession()) {
+    show($("adminLoginBox"), false);
+    show($("adminPanel"), true);
+    refreshAdmin();
+  } else {
+    show($("adminLoginBox"), true);
+    show($("adminPanel"), false);
+  }
+}
+
+function closeAdmin() {
+  show($("adminModal"), false);
+}
+
+async function refreshAdmin() {
+  try {
+    const rides = await fetchAllRides();
+    adminReport = buildCashflow(rides, adminPeriod);
+    const s = adminReport;
+    $("adminSummary").innerHTML = `
+      <div><span class="k">Periode</span>${s.period}</div>
+      <div><span class="k">Order selesai</span>${s.countCompleted}</div>
+      <div><span class="k">Order batal</span>${s.countCancelled}</div>
+      <div><span class="k">GMV (total bayar penumpang)</span>${formatRupiah(s.gmv)}</div>
+      <div><span class="k">Revenue biaya layanan (TRBike)</span><strong>${formatRupiah(s.revenueLayanan)}</strong></div>
+      <div><span class="k">Tabungan / kewajiban PPN</span>${formatRupiah(s.taxReserve)}</div>
+      <div><span class="k">Pendapatan bersih perusahaan</span><strong>${formatRupiah(s.netCompany)}</strong></div>
+      <div><span class="k">Ke driver (fare)</span>${formatRupiah(s.driverPay)}</div>
+      <div><span class="k">Tips driver</span>${formatRupiah(s.tips)}</div>
+      <div><span class="k">Kompensasi batal → driver</span>${formatRupiah(s.cancelComp)}</div>
+    `;
+    const box = $("adminTxList");
+    if (!s.rows.length) {
+      box.innerHTML = '<div class="empty">Belum ada transaksi di periode ini.</div>';
+    } else {
+      box.innerHTML = s.rows.slice(0, 50).map((r) => `
+        <div class="item">
+          <div class="row"><b>${r.type}</b><span class="meta">${new Date(r.date).toLocaleString("id-ID")}</span></div>
+          <div class="meta">Layanan ${formatRupiah(r.serviceFee)} · PPN ${formatRupiah(r.tax)} · Driver ${formatRupiah(r.driver)}</div>
+        </div>`).join("");
+    }
+  } catch (err) {
+    toast(err.message || "Gagal load admin", "error");
+  }
+}
+
+
 async function initApp() {
   if (!initFirebase()) {
     toast("Firebase gagal dimuat", "error");
@@ -921,6 +975,52 @@ async function initApp() {
         sameGenderOnly: e.target.checked
       }
     });
+  });
+
+
+  // Admin
+  let brandTaps = 0;
+  $("adminOpenBtn")?.addEventListener("click", () => {
+    brandTaps++;
+    if (brandTaps >= 5) {
+      brandTaps = 0;
+      openAdmin();
+    }
+    setTimeout(() => { brandTaps = 0; }, 2000);
+  });
+  $("adminClose")?.addEventListener("click", closeAdmin);
+  $("adminModal")?.addEventListener("click", (e) => {
+    if (e.target === $("adminModal")) closeAdmin();
+  });
+  $("adminLoginBtn")?.addEventListener("click", () => {
+    const ok = adminLogin($("adminPassword").value);
+    if (!ok) {
+      $("adminMsg").textContent = "Password salah";
+      return;
+    }
+    $("adminMsg").textContent = "";
+    show($("adminLoginBox"), false);
+    show($("adminPanel"), true);
+    refreshAdmin();
+  });
+  $("adminLogoutBtn")?.addEventListener("click", () => {
+    adminLogout();
+    show($("adminLoginBox"), true);
+    show($("adminPanel"), false);
+    $("adminPassword").value = "";
+  });
+  $("adminRefreshBtn")?.addEventListener("click", refreshAdmin);
+  $("adminDownloadBtn")?.addEventListener("click", () => {
+    if (!adminReport) return toast("Refresh dulu", "error");
+    const name = "trbike-cashflow-" + adminPeriod + "-" + Date.now() + ".csv";
+    downloadText(name, cashflowToCSV(adminReport));
+    toast("CSV diunduh", "success");
+  });
+  $$(".period-btn").forEach((b) => {
+    b.onclick = () => {
+      adminPeriod = b.dataset.period;
+      refreshAdmin();
+    };
   });
 
   onAuthStateChanged(async (user) => {

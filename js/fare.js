@@ -1,82 +1,76 @@
 /**
- * TRBike — Fair Fare Engine (revisi sesuai ketentuan bisnis)
+ * TRBike — Fare Engine v2.1
  *
- * BBM = Rp 350 / km (trip + jemput) → dasar hak driver
- * Dari total BBM:
- *   - 10% tabungan perawatan kendaraan (hak driver)
- *   - 13% tabungan makan + kesehatan (hak driver)
- *   - 77% jasa driver (hak driver)
- *   (10+13+77 = 100% total BBM = pendapatan bersih driver)
+ * BBM = Rp 350 / km (trip + jemput)
+ * Dari total BBM (alokasi hak driver):
+ *   10% perawatan | 13% makan & kesehatan | 77% jasa driver
  *
- * Biaya layanan = % dari total BBM → hak TRBike (default 17%)
- * Tarif sebelum PPN = total BBM + biaya layanan
+ * Tarif sebelum PPN =
+ *   BBM + Perawatan + Makan&kesehatan + Jasa driver + Biaya layanan
+ * (karena 10+13+77% = 100% BBM, ini setara 2×BBM + biaya layanan)
+ *
+ * Biaya layanan = 17% × total BBM (hak TRBike)
  * PPN = 11% × tarif sebelum PPN
- * Total dibayar penumpang = tarif sebelum PPN + PPN (dibulatkan ke Rp500)
+ * Total penumpang = sebelum PPN + PPN (bulat Rp500)
  */
 
 const DEFAULT_FARE_RULES = {
-  fuelPerKm: 350, // Rp per km
-  // Pembagian dari total BBM (hak driver)
-  perawatanPercent: 0.10,
+  fuelPerKm: 350,
+  perawatanPercent: 0.1,
   makanKesehatanPercent: 0.13,
   jasaDriverPercent: 0.77,
-  // Hak platform
-  serviceFeePercent: 0.17, // dari total BBM
-  taxPercent: 0.11, // PPN dari tarif sebelum PPN
+  serviceFeePercent: 0.17,
+  taxPercent: 0.11,
   classMultipliers: {
     standard: 1.0,
     comfort: 1.1,
     premium: 1.2
   },
-  version: "2.0.0-bbm350"
+  version: "2.1.0-beforePpn-full"
 };
 
 function calculateFare(tripKm, pickupKm, serviceClass = "standard", rules = DEFAULT_FARE_RULES) {
   const trip = Math.max(0, Number(tripKm) || 0);
   const pickup = Math.max(0, Number(pickupKm) || 0);
   const mult = rules.classMultipliers[serviceClass] || 1;
-
   const fuelPerKm = rules.fuelPerKm || 350;
+
   const tripFuel = trip * fuelPerKm;
   const pickupFuel = pickup * fuelPerKm;
-  const totalBBM = tripFuel + pickupFuel;
+  const totalBBM = (tripFuel + pickupFuel) * mult;
 
-  // Hak driver (100% dari total BBM)
   const perawatan = totalBBM * (rules.perawatanPercent ?? 0.1);
   const makanKesehatan = totalBBM * (rules.makanKesehatanPercent ?? 0.13);
   const jasaDriver = totalBBM * (rules.jasaDriverPercent ?? 0.77);
-  const pendapatanBersih = perawatan + makanKesehatan + jasaDriver; // = totalBBM
+  // Pendapatan bersih driver = alokasi dari BBM (100%)
+  const pendapatanBersih = perawatan + makanKesehatan + jasaDriver;
 
-  // Hak TRBike
-  const serviceFee = totalBBM * (rules.serviceFeePercent ?? 0.17) * mult;
+  const serviceFee = totalBBM * (rules.serviceFeePercent ?? 0.17);
 
-  // Sebelum PPN (setelah class multiplier pada komponen berbayar)
-  // BBM/driver mengikuti jarak; layanan × class
-  const tarifSebelumPPN = (totalBBM + totalBBM * (rules.serviceFeePercent ?? 0.17)) * mult;
-  // Lebih jelas: (totalBBM * mult) + serviceFee — serviceFee sudah × mult
-  const beforePpn = totalBBM * mult + serviceFee;
+  // SEBELUM PPN = BBM + Perawatan + Makan&kes + Jasa + Layanan
+  const beforePpn =
+    totalBBM + perawatan + makanKesehatan + jasaDriver + serviceFee;
 
   const tax = beforePpn * (rules.taxPercent ?? 0.11);
   const rawTotal = beforePpn + tax;
   const total = Math.ceil(rawTotal / 500) * 500;
 
+  const round = (n) => Math.round(n);
+
   return {
-    total,
-    tripFuel: Math.round(tripFuel * mult),
-    pickupFuel: Math.round(pickupFuel * mult),
-    totalBBM: Math.round(totalBBM * mult),
-    perawatan: Math.round(perawatan * mult),
-    makanKesehatan: Math.round(makanKesehatan * mult),
-    jasaDriver: Math.round(jasaDriver * mult),
-    pendapatanBersih: Math.round(pendapatanBersih * mult),
-    serviceFee: Math.round(serviceFee),
-    tax: Math.round(tax),
-    beforePpn: Math.round(beforePpn),
-    // kompatibilitas field lama
-    driverPool: Math.round(pendapatanBersih * mult),
-    driverGross: Math.round(pendapatanBersih * mult),
-    operatingBase: Math.round(totalBBM * mult),
-    poolPercent: 1,
+    total: round(total),
+    tripFuel: round(tripFuel * mult),
+    pickupFuel: round(pickupFuel * mult),
+    totalBBM: round(totalBBM),
+    perawatan: round(perawatan),
+    makanKesehatan: round(makanKesehatan),
+    jasaDriver: round(jasaDriver),
+    pendapatanBersih: round(pendapatanBersih),
+    serviceFee: round(serviceFee),
+    tax: round(tax),
+    beforePpn: round(beforePpn),
+    driverPool: round(pendapatanBersih),
+    driverGross: round(pendapatanBersih),
     classMultiplier: mult,
     serviceClass,
     tripKm: trip,
@@ -84,16 +78,17 @@ function calculateFare(tripKm, pickupKm, serviceClass = "standard", rules = DEFA
     fuelPerKm,
     rulesVersion: rules.version,
     breakdown: {
-      tripFuel: Math.round(tripFuel * mult),
-      pickupFuel: Math.round(pickupFuel * mult),
-      perawatan: Math.round(perawatan * mult),
-      makanKesehatan: Math.round(makanKesehatan * mult),
-      jasaDriver: Math.round(jasaDriver * mult),
-      pendapatanBersih: Math.round(pendapatanBersih * mult),
-      serviceFee: Math.round(serviceFee),
-      beforePpn: Math.round(beforePpn),
-      tax: Math.round(tax),
-      total
+      tripFuel: round(tripFuel * mult),
+      pickupFuel: round(pickupFuel * mult),
+      totalBBM: round(totalBBM),
+      perawatan: round(perawatan),
+      makanKesehatan: round(makanKesehatan),
+      jasaDriver: round(jasaDriver),
+      pendapatanBersih: round(pendapatanBersih),
+      serviceFee: round(serviceFee),
+      beforePpn: round(beforePpn),
+      tax: round(tax),
+      total: round(total)
     }
   };
 }
@@ -110,18 +105,10 @@ async function getFareRules() {
   try {
     const snap = await db.ref("fareRules/current").once("value");
     if (snap.exists()) {
-      const remote = snap.val();
-      return {
-        ...DEFAULT_FARE_RULES,
-        ...remote,
-        classMultipliers: {
-          ...DEFAULT_FARE_RULES.classMultipliers,
-          ...(remote.classMultipliers || {})
-        }
-      };
+      return { ...DEFAULT_FARE_RULES, ...snap.val() };
     }
   } catch (e) {
-    console.warn("Gagal ambil fareRules, pakai default:", e.message);
+    console.warn("fareRules fallback", e.message);
   }
   return DEFAULT_FARE_RULES;
 }

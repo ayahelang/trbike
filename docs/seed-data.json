@@ -2,7 +2,7 @@
   "fareRules": {
     "current": {
       "fuelPerKm": 350,
-      "perawatanPercent": 0.10,
+      "perawatanPercent": 0.1,
       "makanKesehatanPercent": 0.13,
       "jasaDriverPercent": 0.77,
       "serviceFeePercent": 0.17,
@@ -12,8 +12,8 @@
         "comfort": 1.1,
         "premium": 1.2
       },
-      "version": "2.0.0-bbm350",
-      "notes": "BBM Rp350/km. Driver 10%+13%+77% dari total BBM. Layanan 17% dari total BBM. PPN 11% dari (BBM+layanan)."
+      "version": "2.1.0-beforePpn-full",
+      "notes": "Sebelum PPN = BBM + perawatan + makanKes + jasa + layanan (= 2*BBM + layanan). PPN 11%."
     }
   },
   "system": {

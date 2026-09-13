@@ -440,3 +440,9 @@ textarea {
   flex-shrink: 0;
 }
 .user-avatar.has-photo { color: transparent; }
+
+.admin-card { max-width: 520px; max-height: 92vh; }
+.admin-periods { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.admin-periods .btn { width: auto; padding: 8px 12px; font-size: 0.8rem; }
+.admin-tx { max-height: 220px; overflow-y: auto; }
+.brand { cursor: pointer; user-select: none; }
