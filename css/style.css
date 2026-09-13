@@ -398,3 +398,20 @@ textarea {
   color: var(--ink);
 }
 .verify-info p { margin-top: 6px; font-size: 0.82rem; color: var(--ink-soft); }
+
+.pay-box {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f7f8fa;
+  border-radius: 12px;
+}
+.pay-box .k { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
+.qris-box { margin: 10px 0; text-align: center; }
+.qris-box img { max-width: 180px; border-radius: 8px; border: 1px solid var(--border); }
+.tracking-banner {
+  position: fixed; top: 58px; left: 50%; transform: translateX(-50%);
+  z-index: 16; background: var(--success); color: #fff;
+  font-size: 0.75rem; font-weight: 700; padding: 8px 14px;
+  border-radius: 999px; box-shadow: var(--shadow); white-space: nowrap;
+  max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
+}

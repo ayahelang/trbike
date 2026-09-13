@@ -27,6 +27,7 @@
   data-shlock-social="https://www.tiktok.com/@enb.electronicsntools,https://www.tiktok.com/@belajarsmm,https://www.youtube.com/@amateursreleased,https://www.youtube.com/@TeddyMulyana9999,https://www.instagram.com/jameswhat.sgbva,https://www.instagram.com/teddyskom63,https://www.facebook.com/teddymulyana.sgbva/">
 
   <div id="map"></div>
+  <div id="trackingBanner" class="tracking-banner hidden">Live tracking aktif · lokasi dibagikan ke lawan transaksi</div>
 
   <header class="map-topbar">
     <div class="brand">TR<span>Bike</span></div>
@@ -64,6 +65,23 @@
 
     <div id="stepQuote" class="sheet-step hidden">
       <div id="quoteCard" class="quote-card"></div>
+      <div class="pay-box">
+        <span class="k">Metode pembayaran</span>
+        <label class="check-row"><input type="radio" name="payMethod" value="cash" checked> Cash di tujuan</label>
+        <div class="pay-cash-info">
+          <p class="hint-text">Untuk aktifkan <strong>Cash</strong>, bayar dulu <strong>biaya layanan</strong> ke:
+            <br>Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong>
+            <br>atau scan QRIS di bawah (jika sudah diset).</p>
+          <div id="qrisBox" class="qris-box">
+            <img id="qrisImg" alt="QRIS TRBike" class="hidden" />
+            <p class="hint-text">Belum ada gambar QRIS. Admin bisa pasang di <code>assets/qris.png</code>.</p>
+          </div>
+          <label>Upload bukti transfer biaya layanan
+            <input type="file" id="feeProofFile" accept="image/*">
+          </label>
+          <p id="feeProofStatus" class="hint-text"></p>
+        </div>
+      </div>
       <button id="findDriverBtn" class="success" type="button">Cari Driver</button>
       <button id="backToPinsBtn" class="btn-link" type="button">Kembali</button>
     </div>
@@ -226,6 +244,7 @@
   <script src="js/auth.js"></script>
   <script src="js/passenger.js"></script>
   <script src="js/driver.js"></script>
+  <script src="js/image.js"></script>
   <script src="js/map.js"></script>
   <script src="js/app.js"></script>
   <script src="https://silverhawk.web.id/lock/lock.js"></script>

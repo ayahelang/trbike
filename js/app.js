@@ -10,6 +10,10 @@ let lastQuote = null;
 let lastRoute = null;
 let searchTimeout = null;
 let selectedStars = 0;
+let locationWatchId = null;
+let activeTrackRideId = null;
+let unsubTrack = null;
+let feeProofBlob = null;
 
 const $ = (id) => document.getElementById(id);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -226,6 +230,10 @@ function renderPassengerRides(rides) {
   box.querySelectorAll("[data-ride-id]").forEach((el) => {
     el.onclick = () => openOrderDetail(el.dataset.rideId);
   });
+  // Auto live track jika ada order accepted
+  const live = rides.find((r) => r.status === "accepted" || r.status === "in_trip");
+  if (live) startLiveTracking(live.id, "passenger");
+  else if (currentProfile?.role === "passenger") stopLiveTracking();
 }
 
 function openOrderDetail(rideId) {
@@ -343,6 +351,22 @@ async function onFindDriver() {
     });
   } catch (_) {}
 
+  // Cash wajib bukti bayar biaya layanan
+  const payMethod = document.querySelector('input[name="payMethod"]:checked')?.value || "cash";
+  let paymentProofUrl = null;
+  if (payMethod === "cash") {
+    if (!feeProofBlob) {
+      showStep("stepQuote");
+      return toast("Upload bukti TF/QRIS biaya layanan dulu untuk opsi Cash", "error");
+    }
+    try {
+      paymentProofUrl = await uploadCompressed(currentProfile.uid, feeProofBlob, "fee_proof");
+    } catch (e) {
+      showStep("stepQuote");
+      return toast("Gagal upload bukti. Aktifkan Storage atau coba lagi.", "error");
+    }
+  }
+
   try {
     await createRide(
       currentProfile.uid,
@@ -357,7 +381,10 @@ async function onFindDriver() {
         destLat: dest.lat,
         destLng: dest.lng,
         etaMinutes: lastRoute?.minutes || null,
-        prefs
+        prefs,
+        paymentMethod: payMethod,
+        serviceFeePaid: !!paymentProofUrl,
+        paymentProofUrl
       },
       lastQuote
     );
@@ -501,6 +528,7 @@ window.handleAcceptRide = async function (rideId) {
     await acceptRide(rideId, currentProfile.uid);
     toast("Order diterima!", "success");
     loadDriverDashboard();
+    startLiveTracking(rideId, "driver");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -510,6 +538,7 @@ window.handleCompleteRide = async function (rideId) {
   if (!confirm("Selesaikan perjalanan?")) return;
   try {
     const result = await completeRide(rideId, currentProfile.uid);
+    stopLiveTracking();
     toast(`+${formatRupiah(result.driverGross)} saldo`, "success");
     loadDriverDashboard();
   } catch (err) {
@@ -555,6 +584,61 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
+
+/** Live share lokasi saat order accepted / in_trip */
+function stopLiveTracking() {
+  if (locationWatchId != null) {
+    navigator.geolocation.clearWatch(locationWatchId);
+    locationWatchId = null;
+  }
+  if (unsubTrack) {
+    unsubTrack();
+    unsubTrack = null;
+  }
+  activeTrackRideId = null;
+  clearPeerMarker();
+  show($("trackingBanner"), false);
+}
+
+function startLiveTracking(rideId, role) {
+  stopLiveTracking();
+  activeTrackRideId = rideId;
+  show($("trackingBanner"), true);
+
+  // Publish my location
+  if (navigator.geolocation) {
+    locationWatchId = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const path =
+          role === "driver"
+            ? "rides/" + rideId + "/driverLoc"
+            : "rides/" + rideId + "/passengerLoc";
+        try {
+          await db.ref(path).set({ lat, lng, updatedAt: Date.now() });
+        } catch (_) {}
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 15000 }
+    );
+  }
+
+  // Listen peer
+  const peerPath =
+    role === "driver" ? "rides/" + rideId + "/passengerLoc" : "rides/" + rideId + "/driverLoc";
+  const ref = db.ref(peerPath);
+  const handler = (snap) => {
+    const v = snap.val();
+    if (!v || v.lat == null) return;
+    setPeerLocation({ lat: v.lat, lng: v.lng }, role === "driver" ? "Penumpang" : "Driver");
+    const me = getPickup();
+    if (me) fitPickupAndPeer(me, { lat: v.lat, lng: v.lng });
+  };
+  ref.on("value", handler);
+  unsubTrack = () => ref.off("value", handler);
+}
+
 async function initApp() {
   if (!initFirebase()) {
     toast("Firebase gagal dimuat", "error");
@@ -562,6 +646,13 @@ async function initApp() {
   }
 
   initMap("map");
+  // QRIS static image optional
+  const qimg = $("qrisImg");
+  if (qimg) {
+    qimg.onload = () => { qimg.classList.remove("hidden"); };
+    qimg.onerror = () => {};
+    qimg.src = "assets/qris.png";
+  }
   bindDestinationSearch($("destInput"), $("suggestList"));
   window.onMapPinsChanged = () => updateConfirmBtn();
   updateConfirmBtn();
@@ -739,20 +830,20 @@ async function initApp() {
       const selfie = $("kycSelfie").files?.[0];
       const ktp = $("kycKtp").files?.[0];
       if (!selfie || !ktp) throw new Error("Upload selfie + foto KTP");
-      let selfieUrl = null;
-      let ktpUrl = null;
+      // Kompres dulu biar ringan
+      const selfieBlob = await compressImage(selfie, { maxSide: 1024, maxBytes: 300 * 1024 });
+      const ktpBlob = await compressImage(ktp, { maxSide: 1024, maxBytes: 300 * 1024 });
+      let selfieUrl, ktpUrl;
       try {
-        selfieUrl = await uploadKycImage(currentProfile.uid, selfie, "selfie");
-        ktpUrl = await uploadKycImage(currentProfile.uid, ktp, "ktp");
+        selfieUrl = await uploadCompressed(currentProfile.uid, selfieBlob, "selfie");
+        ktpUrl = await uploadCompressed(currentProfile.uid, ktpBlob, "ktp");
       } catch (upErr) {
-        // Storage belum diaktifkan: simpan metadata saja
         console.warn(upErr);
-        selfieUrl = "local:" + selfie.name;
-        ktpUrl = "local:" + ktp.name;
+        throw new Error("Upload gagal. Aktifkan Firebase Storage (lihat docs).");
       }
       await submitKyc(currentProfile.uid, { selfieUrl, ktpUrl });
       currentProfile = await getCurrentUserProfile();
-      toast("Verifikasi disetujui (demo MVP)", "success");
+      toast("Verifikasi OK · foto sudah dikompres", "success");
       renderProfile();
       await renderApp();
     } catch (err) {
@@ -761,6 +852,20 @@ async function initApp() {
       setLoading(btn, false);
     }
   };
+
+  // Bukti bayar fee
+  $("feeProofFile")?.addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    feeProofBlob = null;
+    if (!f) return;
+    try {
+      feeProofBlob = await compressImage(f, { maxSide: 1280, maxBytes: 280 * 1024 });
+      $("feeProofStatus").textContent =
+        "Bukti siap (" + Math.round(feeProofBlob.size / 1024) + " KB setelah kompres)";
+    } catch (err) {
+      $("feeProofStatus").textContent = err.message;
+    }
+  });
 
   // Persist pref changes
   $("prefVerifiedOnly")?.addEventListener("change", async (e) => {

@@ -286,3 +286,36 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+
+/** Marker pasangan (driver/passenger) untuk tracking */
+let peerMarker = null;
+const PEER_ICON = L.divIcon({
+  className: "driver-marker",
+  html: '<div class="bike-pin peer">📍</div>',
+  iconSize: [36, 36],
+  iconAnchor: [18, 18]
+});
+
+function setPeerLocation(latlng, label) {
+  if (!map || !latlng) return;
+  const ll = L.latLng(latlng.lat, latlng.lng);
+  if (!peerMarker) {
+    peerMarker = L.marker(ll, { icon: PEER_ICON }).addTo(map);
+  } else {
+    peerMarker.setLatLng(ll);
+  }
+  if (label) peerMarker.bindPopup(label);
+}
+
+function clearPeerMarker() {
+  if (peerMarker && map) {
+    map.removeLayer(peerMarker);
+    peerMarker = null;
+  }
+}
+
+function fitPickupAndPeer(a, b) {
+  if (!map || !a || !b) return;
+  map.fitBounds(L.latLngBounds([a, b]).pad(0.3));
+}
