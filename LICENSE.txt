@@ -1,4 +1,0 @@
-TRBIKE MVP — Educational Prototype
-Copyright (c) Teddy Mulyana.
-For educational/research/development use. Production requires security, legal, financial,
-privacy, transportation, payment and regulatory review.
