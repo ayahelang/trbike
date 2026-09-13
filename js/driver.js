@@ -115,3 +115,18 @@ async function completeRide(rideId, driverId) {
 
   return { driverGross, newBalance };
 }
+
+function listenDriverFeedback(driverId, callback) {
+  const ref = db.ref("drivers/" + driverId + "/feedback").limitToLast(10);
+  ref.on("value", (snap) => {
+    const items = [];
+    snap.forEach((c) => items.push({ id: c.key, ...c.val() }));
+    items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    callback(items);
+  });
+  return () => ref.off();
+}
+
+async function updateDriverPrefs(uid, prefs) {
+  await db.ref("drivers/" + uid + "/prefs").update(prefs);
+}

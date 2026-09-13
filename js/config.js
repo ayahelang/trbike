@@ -1,15 +1,9 @@
 /**
  * TRBike — Firebase Configuration
- *
- * PENTING:
- * - Jangan commit service_role / private key
- * - databaseURL harus diambil dari Firebase Console → Realtime Database
  */
-
 const firebaseConfig = {
   apiKey: "AIzaSyDywY8Q9lrU3nZdtvIZBRsjTO_xN6W2qFY",
   authDomain: "trbike.firebaseapp.com",
-  // Ganti jika di console berbeda. Cek: Realtime Database → tab Data (URL bar)
   databaseURL: "https://trbike-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "trbike",
   storageBucket: "trbike.firebasestorage.app",
@@ -17,7 +11,7 @@ const firebaseConfig = {
   appId: "1:1049681707234:web:1c1d98ca8be09615a01ebb"
 };
 
-let app, auth, db;
+let app, auth, db, storage;
 
 function initFirebase() {
   if (typeof firebase === "undefined") {
@@ -27,5 +21,11 @@ function initFirebase() {
   app = firebase.initializeApp(firebaseConfig);
   auth = firebase.auth();
   db = firebase.database();
+  try {
+    storage = firebase.storage();
+  } catch (e) {
+    storage = null;
+    console.warn("Storage belum tersedia", e);
+  }
   return true;
 }

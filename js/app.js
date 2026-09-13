@@ -1,13 +1,15 @@
 /**
- * TRBike — Main App (Map-first)
+ * TRBike — Main App (Map-first + safety prefs + KYC + tips/rating)
  */
 
 let currentProfile = null;
 let unsubRides = null;
 let unsubActive = null;
+let unsubFeedback = null;
 let lastQuote = null;
 let lastRoute = null;
 let searchTimeout = null;
+let selectedStars = 0;
 
 const $ = (id) => document.getElementById(id);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -21,7 +23,7 @@ function toast(msg, type = "info") {
   const t = $("toast");
   t.textContent = msg;
   t.className = "toast show " + type;
-  setTimeout(() => t.classList.remove("show"), 3200);
+  setTimeout(() => t.classList.remove("show"), 3500);
 }
 
 function setLoading(btn, loading) {
@@ -32,18 +34,17 @@ function setLoading(btn, loading) {
 }
 
 function showStep(id) {
-  ["stepSearch", "stepPins", "stepQuote", "stepSearching"].forEach((s) => {
-    show($(s), s === id);
-  });
+  ["stepSearch", "stepPins", "stepQuote", "stepSearching"].forEach((s) => show($(s), s === id));
 }
 
-// ===== AUTH UI =====
-function openAuth() {
-  show($("authModal"), true);
+function openAuth() { show($("authModal"), true); }
+function closeAuth() { show($("authModal"), false); }
+function openProfile() {
+  if (!currentProfile) { openAuth(); return; }
+  renderProfile();
+  show($("profileModal"), true);
 }
-function closeAuth() {
-  show($("authModal"), false);
-}
+function closeProfile() { show($("profileModal"), false); }
 
 function setupAuthTabs() {
   $$(".tab").forEach((tab) => {
@@ -82,7 +83,13 @@ async function handleRegister(e) {
   try {
     const name = $("regName").value.trim();
     if (name.length < 2) throw new Error("Nama terlalu pendek");
-    await registerUser(name, $("regEmail").value.trim(), $("regPassword").value, $("regRole").value);
+    await registerUser(
+      name,
+      $("regEmail").value.trim(),
+      $("regPassword").value,
+      $("regRole").value,
+      $("regGender")?.value || ""
+    );
     toast("Akun berhasil dibuat", "success");
     closeAuth();
   } catch (err) {
@@ -121,28 +128,42 @@ function mapAuthError(err) {
   return err.message || "Terjadi kesalahan.";
 }
 
-// ===== RENDER ROLE =====
 async function renderApp() {
   currentProfile = await getCurrentUserProfile();
-
   if (!currentProfile) {
     show($("authOpenBtn"), true);
     show($("logoutBtn"), false);
     show($("userChip"), false);
+    show($("profileBtn"), false);
     show($("passengerSheet"), true);
     show($("driverSheet"), false);
     showStep("stepSearch");
     updateConfirmBtn();
+    show($("stepOrders"), false);
     return;
   }
 
   show($("authOpenBtn"), false);
   show($("logoutBtn"), true);
+  show($("profileBtn"), true);
   show($("userChip"), true);
-  $("userChip").textContent = currentProfile.fullName.split(" ")[0];
+  $("userChip").textContent =
+    (currentProfile.fullName || "").split(" ")[0] +
+    (currentProfile.identityVerified ? " ✓" : "");
+
+  // Pref checkboxes
+  if ($("prefVerifiedOnly")) {
+    $("prefVerifiedOnly").checked = currentProfile.prefs?.verifiedDriversOnly !== false;
+  }
+  const showGender = currentProfile.identityVerified && currentProfile.gender === "female";
+  show($("prefSameGenderWrap"), showGender);
+  if ($("prefSameGender")) {
+    $("prefSameGender").checked = !!currentProfile.prefs?.sameGenderOnly;
+  }
 
   if (unsubRides) unsubRides();
   if (unsubActive) unsubActive();
+  if (unsubFeedback) unsubFeedback();
 
   if (currentProfile.role === "driver") {
     show($("passengerSheet"), false);
@@ -155,25 +176,19 @@ async function renderApp() {
   }
 }
 
-// ===== PASSENGER MAP FLOW =====
-function setupPassenger() {
-  showStep("stepSearch");
-  updateConfirmBtn();
-  if (currentProfile) {
-    unsubRides = listenPassengerRides(currentProfile.uid, renderPassengerRides);
-  }
-}
-
 function updateConfirmBtn() {
   const btn = $("confirmDestBtn");
   if (!btn) return;
   const hasDest = !!getDestination();
   btn.disabled = !hasDest;
   btn.classList.toggle("ready", hasDest);
-  if (hasDest) {
-    btn.removeAttribute("aria-disabled");
-  } else {
-    btn.setAttribute("aria-disabled", "true");
+}
+
+function setupPassenger() {
+  showStep("stepSearch");
+  updateConfirmBtn();
+  if (currentProfile) {
+    unsubRides = listenPassengerRides(currentProfile.uid, renderPassengerRides);
   }
 }
 
@@ -192,22 +207,22 @@ function renderPassengerRides(rides) {
   }
   show(wrap, true);
   window._rideCache = {};
-  rides.slice(0, 8).forEach((r) => {
-    window._rideCache[r.id] = r;
-  });
+  rides.slice(0, 8).forEach((r) => (window._rideCache[r.id] = r));
   box.innerHTML = rides
     .slice(0, 8)
-    .map((r) => {
-      return `<button type="button" class="item item-click" data-ride-id="${r.id}">
+    .map(
+      (r) => `<button type="button" class="item item-click" data-ride-id="${r.id}">
         <div class="row">
           <b>${escapeHtml(r.destinationText || r.pickupText || "Order")}</b>
           <span class="badge status-${r.status}">${statusLabel(r.status)}</span>
         </div>
-        <div class="meta">${r.tripDistanceKm || "—"} km · ${formatRupiah(r.fare?.total || 0)}</div>
-      </button>`;
-    })
+        <div class="meta">${r.tripDistanceKm || "—"} km · ${formatRupiah(r.fare?.total || 0)}
+          ${r.cancelCharge ? " · charge " + formatRupiah(r.cancelCharge.amount) : ""}
+          ${r.rating ? " · ★" + r.rating : ""}
+        </div>
+      </button>`
+    )
     .join("");
-
   box.querySelectorAll("[data-ride-id]").forEach((el) => {
     el.onclick = () => openOrderDetail(el.dataset.rideId);
   });
@@ -215,11 +230,10 @@ function renderPassengerRides(rides) {
 
 function openOrderDetail(rideId) {
   const r = window._rideCache?.[rideId];
-  if (!r) {
-    toast("Detail tidak ditemukan", "error");
-    return;
-  }
+  if (!r) return toast("Detail tidak ditemukan", "error");
   window._activeRideId = rideId;
+  selectedStars = r.rating || 0;
+  paintStars(selectedStars);
   const eta = r.etaMinutes ? `~${r.etaMinutes} mnt` : "—";
   $("orderDetailBody").innerHTML = `
     <div class="detail-grid">
@@ -231,9 +245,26 @@ function openOrderDetail(rideId) {
       <div><span class="k">ETA</span><span>${eta}</span></div>
       <div><span class="k">Tarif</span><span><strong>${formatRupiah(r.fare?.total || 0)}</strong></span></div>
       <div><span class="k">Hak driver</span><span>${formatRupiah(r.fare?.driverGross || 0)}</span></div>
-    </div>
-  `;
+      ${r.tip ? `<div><span class="k">Tips</span><span>${formatRupiah(r.tip)}</span></div>` : ""}
+    </div>`;
+
+  const chargeBox = $("cancelChargeBox");
+  if (r.cancelCharge) {
+    show(chargeBox, true);
+    chargeBox.innerHTML = `<strong>Biaya pembatalan</strong><br>${escapeHtml(r.cancelCharge.reason)}<br>
+      Jarak: ${r.cancelCharge.traveledKm} km × 2 × BBM → <strong>${formatRupiah(r.cancelCharge.amount)}</strong>
+      <p class="hint-text">Kompensasi ini masuk ke hak driver.</p>`;
+  } else if (r.status === "accepted" || r.status === "in_trip") {
+    show(chargeBox, true);
+    const est = Math.ceil(((r.pickupDistanceKm || 0) * (12500 / 40) * 2) / 500) * 500;
+    chargeBox.innerHTML = `<strong>Info pembatalan</strong><br>Jika dibatalkan sekarang (driver sudah ambil order),
+      estimasi charge BBM 2× jarak jemput: <strong>${formatRupiah(est)}</strong>`;
+  } else {
+    show(chargeBox, false);
+  }
+
   $("orderNoteInput").value = r.note || "";
+  $("tipAmount").value = r.tip || "";
   show($("orderDetailModal"), true);
 }
 
@@ -242,71 +273,47 @@ function closeOrderDetail() {
   window._activeRideId = null;
 }
 
-window.handleCancelRide = async function (rideId) {
-  if (!confirm("Batalkan order ini?")) return;
-  try {
-    await cancelRide(rideId, currentProfile.uid);
-    toast("Order dibatalkan", "success");
-    closeOrderDetail();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-};
+function paintStars(n) {
+  $$("#ratingStars button").forEach((b) => {
+    b.classList.toggle("on", +b.dataset.star <= n);
+  });
+}
 
 async function onConfirmDest() {
-  if (!getDestination()) {
-    toast("Pilih tujuan dulu", "error");
-    return;
-  }
+  if (!getDestination()) return toast("Pilih tujuan dulu", "error");
   if (!getPickup()) {
     try {
       await locateUser();
     } catch {
-      toast("Izinkan lokasi untuk titik jemput", "error");
-      return;
+      return toast("Izinkan lokasi untuk titik jemput", "error");
     }
   }
   showStep("stepPins");
-  toast("Geser pin jika perlu, lalu Cek Tarif");
 }
 
 async function onCheckFare() {
   const pickup = getPickup();
   const dest = getDestination();
-  if (!pickup || !dest) {
-    toast("Titik jemput & tujuan wajib ada", "error");
-    return;
-  }
+  if (!pickup || !dest) return toast("Titik jemput & tujuan wajib", "error");
   if (!currentProfile) {
     openAuth();
-    toast("Masuk dulu untuk cek tarif & pesan");
-    return;
+    return toast("Masuk dulu untuk cek tarif");
   }
-
   const btn = $("checkFareBtn");
   setLoading(btn, true);
   try {
     lastRoute = await getRouteInfo(pickup, dest);
     const tripKm = Math.max(0.5, +(lastRoute.km || 0).toFixed(1));
-    // Estimasi jarak jemput driver (MVP visual) ~ 0.5–2 km
     const pickupKm = +(0.5 + Math.random() * 1.5).toFixed(1);
-
     const rules = await getFareRules();
     lastQuote = calculateFare(tripKm, pickupKm, "standard", rules);
-
     $("quoteCard").innerHTML = `
       <div class="price">${formatRupiah(lastQuote.total)}</div>
-      <div class="meta">
-        ~${lastRoute.minutes} mnt · ${tripKm} km perjalanan
-        ${lastRoute.source === "osrm" ? "" : " (estimasi)"}
-        · jemput ~${pickupKm} km
-      </div>
+      <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km</div>
       <div class="row"><span>BBM perjalanan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
       <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
-      <div class="row"><span>Hak driver (pool)</span><span>${formatRupiah(lastQuote.driverPool)}</span></div>
-      <div class="row"><span>Layanan + pajak</span><span>${formatRupiah(lastQuote.serviceFee + lastQuote.tax)}</span></div>
-      <div class="row total"><span>Total</span><span>${formatRupiah(lastQuote.total)}</span></div>
-    `;
+      <div class="row"><span>Hak driver</span><span>${formatRupiah(lastQuote.driverPool)}</span></div>
+      <div class="row total"><span>Total</span><span>${formatRupiah(lastQuote.total)}</span></div>`;
     showStep("stepQuote");
   } catch (err) {
     toast(err.message || "Gagal hitung tarif", "error");
@@ -316,19 +323,25 @@ async function onCheckFare() {
 }
 
 async function onFindDriver() {
-  if (!currentProfile) {
-    openAuth();
-    return;
-  }
-  if (!lastQuote || !getDestination() || !getPickup()) {
-    toast("Hitung tarif dulu", "error");
-    return;
-  }
-
+  if (!currentProfile) return openAuth();
+  if (!lastQuote || !getDestination() || !getPickup()) return toast("Hitung tarif dulu", "error");
   showStep("stepSearching");
   const dest = getDestination();
   const pickup = getPickup();
   const destLabel = $("destInput").value.trim() || "Tujuan";
+  const prefs = {
+    verifiedOnly: $("prefVerifiedOnly")?.checked !== false,
+    sameGenderOnly: !!($("prefSameGender")?.checked)
+  };
+  // Simpan pref ke profil
+  try {
+    await updateUserProfile(currentProfile.uid, {
+      prefs: {
+        verifiedDriversOnly: prefs.verifiedOnly,
+        sameGenderOnly: prefs.sameGenderOnly
+      }
+    });
+  } catch (_) {}
 
   try {
     await createRide(
@@ -343,28 +356,49 @@ async function onFindDriver() {
         pickupLng: pickup.lng,
         destLat: dest.lat,
         destLng: dest.lng,
-        etaMinutes: lastRoute?.minutes || null
+        etaMinutes: lastRoute?.minutes || null,
+        prefs
       },
       lastQuote
     );
-
-    // Simulasi mencari driver
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
       showStep("stepSearch");
-      toast("Order dikirim! Menunggu driver menerima.", "success");
+      toast("Order dikirim! Menunggu driver.", "success");
       $("destInput").value = "";
       lastQuote = null;
-    }, 2500);
+    }, 2200);
   } catch (err) {
     showStep("stepQuote");
-    toast(err.message || "Gagal membuat order", "error");
+    toast(err.message || "Gagal order", "error");
   }
 }
 
-// ===== DRIVER =====
 function setupDriver() {
   loadDriverDashboard();
+  const dPrefs = async () => {
+    const d = await getDriverProfile(currentProfile.uid);
+    if ($("driverPrefVerifiedPax")) {
+      $("driverPrefVerifiedPax").checked = !!d?.prefs?.verifiedPassengersOnly;
+    }
+    const woman =
+      currentProfile.identityVerified && currentProfile.gender === "female";
+    show($("driverPrefWomenWrap"), woman);
+    if ($("driverPrefWomenOnly")) {
+      $("driverPrefWomenOnly").checked = !!d?.prefs?.womenPassengersOnly;
+    }
+  };
+  dPrefs();
+
+  $("driverPrefVerifiedPax")?.addEventListener("change", async (e) => {
+    await updateDriverPrefs(currentProfile.uid, { verifiedPassengersOnly: e.target.checked });
+    toast("Preferensi disimpan", "success");
+  });
+  $("driverPrefWomenOnly")?.addEventListener("change", async (e) => {
+    await updateDriverPrefs(currentProfile.uid, { womenPassengersOnly: e.target.checked });
+    toast("Preferensi disimpan", "success");
+  });
+
   $("toggleOnline").onclick = async () => {
     const btn = $("toggleOnline");
     setLoading(btn, true);
@@ -372,7 +406,6 @@ function setupDriver() {
       const profile = await getDriverProfile(currentProfile.uid);
       const next = !profile?.isOnline;
       await setDriverOnline(currentProfile.uid, next);
-      // Simpan lokasi driver jika online
       if (next && getPickup()) {
         const p = getPickup();
         await db.ref("drivers/" + currentProfile.uid).update({
@@ -389,6 +422,7 @@ function setupDriver() {
   };
   unsubRides = listenRequestedRides(renderDriverOrders);
   unsubActive = listenDriverActiveRides(currentProfile.uid, renderDriverActive);
+  unsubFeedback = listenDriverFeedback(currentProfile.uid, renderDriverFeedback);
 }
 
 async function loadDriverDashboard() {
@@ -413,10 +447,11 @@ function renderDriverOrders(rides) {
       (r) => `<div class="item">
       <div class="row">
         <div><b>${escapeHtml(r.destinationText || r.pickupText)}</b>
-        <div class="sub">${r.tripDistanceKm} km · ${formatRupiah(r.fare?.total || 0)}</div></div>
-        <button class="primary sm" onclick="handleAcceptRide('${r.id}')">Ambil</button>
-      </div>
-    </div>`
+        <div class="sub">${r.tripDistanceKm} km · ${formatRupiah(r.fare?.total || 0)}
+          ${r.prefs?.verifiedOnly ? " · verifikasi" : ""}
+        </div></div>
+        <button class="primary sm" type="button" onclick="handleAcceptRide('${r.id}')">Ambil</button>
+      </div></div>`
     )
     .join("");
 }
@@ -428,13 +463,34 @@ function renderDriverActive(rides) {
     return;
   }
   box.innerHTML = rides
-    .map(
-      (r) => `<div class="item">
+    .map((r) => {
+      const charge = r.cancelCharge
+        ? `<div class="sub charge-note">Charge batal: ${formatRupiah(r.cancelCharge.amount)}</div>`
+        : "";
+      return `<div class="item">
       <div class="row">
         <div><b>${escapeHtml(r.destinationText || r.pickupText)}</b>
-        <div class="sub">Hak: ${formatRupiah(r.fare?.driverGross || 0)}</div></div>
-        <button class="success sm" style="width:auto;padding:8px 12px" onclick="handleCompleteRide('${r.id}')">Selesai</button>
+        <div class="sub">Hak: ${formatRupiah(r.fare?.driverGross || 0)}</div>${charge}</div>
+        <button class="success sm" style="width:auto;padding:8px 12px" type="button" onclick="handleCompleteRide('${r.id}')">Selesai</button>
+      </div></div>`;
+    })
+    .join("");
+}
+
+function renderDriverFeedback(items) {
+  const box = $("driverFeedback");
+  if (!box) return;
+  if (!items.length) {
+    box.innerHTML = '<div class="empty">Belum ada tips/rating.</div>';
+    return;
+  }
+  box.innerHTML = items
+    .map(
+      (f) => `<div class="item">
+      <div class="meta">${f.stars ? "★".repeat(f.stars) : "—"}
+        ${f.tip ? " · Tips " + formatRupiah(f.tip) : ""}
       </div>
+      ${f.comment ? `<div class="sub">${escapeHtml(f.comment)}</div>` : ""}
     </div>`
     )
     .join("");
@@ -451,15 +507,34 @@ window.handleAcceptRide = async function (rideId) {
 };
 
 window.handleCompleteRide = async function (rideId) {
-  if (!confirm("Selesaikan perjalanan? Hak driver masuk saldo.")) return;
+  if (!confirm("Selesaikan perjalanan?")) return;
   try {
     const result = await completeRide(rideId, currentProfile.uid);
-    toast(`+${formatRupiah(result.driverGross)} masuk saldo`, "success");
+    toast(`+${formatRupiah(result.driverGross)} saldo`, "success");
     loadDriverDashboard();
   } catch (err) {
     toast(err.message, "error");
   }
 };
+
+function renderProfile() {
+  const p = currentProfile;
+  const st = p.verificationStatus || "none";
+  $("profileBody").innerHTML = `
+    <div class="detail-grid">
+      <div><span class="k">Nama</span>${escapeHtml(p.fullName)}</div>
+      <div><span class="k">Role</span>${p.role}</div>
+      <div><span class="k">Verifikasi</span>${
+        p.identityVerified
+          ? '<span class="badge online">Terverifikasi</span>'
+          : st === "pending"
+          ? '<span class="badge status-requested">Menunggu</span>'
+          : '<span class="badge muted">Belum</span>'
+      }</div>
+    </div>`;
+  if ($("profileGender")) $("profileGender").value = p.gender || "";
+  $("profileMsg").textContent = "";
+}
 
 function statusLabel(s) {
   return (
@@ -480,7 +555,6 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-// ===== INIT =====
 async function initApp() {
   if (!initFirebase()) {
     toast("Firebase gagal dimuat", "error");
@@ -489,21 +563,15 @@ async function initApp() {
 
   initMap("map");
   bindDestinationSearch($("destInput"), $("suggestList"));
-
-  // Selalu aktif — tidak tergantung login
-  window.onMapPinsChanged = ({ dest }) => {
-    updateConfirmBtn();
-  };
+  window.onMapPinsChanged = () => updateConfirmBtn();
   updateConfirmBtn();
 
-  // Lokasi user + driver icons demo
   try {
     const pos = await locateUser();
     showNearbyDrivers(pos, 6);
   } catch {
     map.setView([-6.2, 106.816666], 13);
     showNearbyDrivers({ lat: -6.2, lng: 106.816666 }, 5);
-    toast("Aktifkan lokasi untuk titik jemput akurat");
   }
 
   setupAuthTabs();
@@ -512,15 +580,21 @@ async function initApp() {
   $("googleBtn").onclick = handleGoogleLogin;
   $("authOpenBtn").onclick = openAuth;
   $("authCloseBtn").onclick = closeAuth;
+  $("profileBtn").onclick = openProfile;
+  $("profileClose").onclick = closeProfile;
   $("authModal").addEventListener("click", (e) => {
     if (e.target === $("authModal")) closeAuth();
   });
+  $("profileModal").addEventListener("click", (e) => {
+    if (e.target === $("profileModal")) closeProfile();
+  });
+
   $("logoutBtn").onclick = async () => {
     if (unsubRides) { unsubRides(); unsubRides = null; }
     if (unsubActive) { unsubActive(); unsubActive = null; }
+    if (unsubFeedback) { unsubFeedback(); unsubFeedback = null; }
     await logoutUser();
-    const box = $("ordersPassenger");
-    if (box) box.innerHTML = "";
+    if ($("ordersPassenger")) $("ordersPassenger").innerHTML = "";
     show($("stepOrders"), false);
     closeOrderDetail();
     toast("Berhasil keluar");
@@ -528,13 +602,6 @@ async function initApp() {
 
   const confBtn = $("confirmDestBtn");
   confBtn.onclick = onConfirmDest;
-  confBtn.addEventListener("touchend", (e) => {
-    // Hindari double-fire; biarkan click yang utama di device hybrid
-    if (confBtn.disabled) {
-      e.preventDefault();
-      toast("Pilih lokasi tujuan dari saran pencarian dulu", "error");
-    }
-  }, { passive: false });
   $("checkFareBtn").onclick = onCheckFare;
   $("findDriverBtn").onclick = onFindDriver;
   $("backToSearchBtn").onclick = () => showStep("stepSearch");
@@ -544,17 +611,50 @@ async function initApp() {
     showStep("stepQuote");
   };
 
+  // Stars
+  $$("#ratingStars button").forEach((b) => {
+    b.onclick = () => {
+      selectedStars = +b.dataset.star;
+      paintStars(selectedStars);
+    };
+  });
+
   $("orderDetailClose").onclick = closeOrderDetail;
   $("orderDetailModal").addEventListener("click", (e) => {
     if (e.target === $("orderDetailModal")) closeOrderDetail();
   });
+
+  $("orderCancelBtn").onclick = async () => {
+    if (!window._activeRideId || !currentProfile) return;
+    const r = window._rideCache?.[window._activeRideId];
+    let msg = "Batalkan pesanan ini?";
+    if (r && (r.status === "accepted" || r.status === "in_trip")) {
+      msg =
+        "Driver sudah mengambil order. Anda akan dikenai kompensasi BBM 2× jarak jemput. Lanjutkan?";
+    }
+    if (!confirm(msg)) return;
+    try {
+      const res = await cancelRide(window._activeRideId, currentProfile.uid);
+      closeOrderDetail();
+      if (res.cancelCharge) {
+        toast(
+          `Dibatalkan. Charge ${formatRupiah(res.cancelCharge.amount)} ke driver`,
+          "success"
+        );
+      } else {
+        toast("Pesanan dibatalkan", "success");
+      }
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+
   $("orderReorderBtn").onclick = async () => {
     if (!window._activeRideId || !currentProfile) return;
     try {
       await reorderRide(window._activeRideId, currentProfile.uid);
       closeOrderDetail();
       showStep("stepSearching");
-      toast("Mencari driver lagi...", "success");
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
         showStep("stepSearch");
@@ -564,6 +664,7 @@ async function initApp() {
       toast(err.message, "error");
     }
   };
+
   $("orderSaveNoteBtn").onclick = async () => {
     if (!window._activeRideId || !currentProfile) return;
     try {
@@ -577,9 +678,10 @@ async function initApp() {
       toast(err.message, "error");
     }
   };
+
   $("orderDeleteBtn").onclick = async () => {
     if (!window._activeRideId || !currentProfile) return;
-    if (!confirm("Hapus pesanan ini permanen?")) return;
+    if (!confirm("Hapus pesanan permanen?")) return;
     try {
       await deleteRide(window._activeRideId, currentProfile.uid);
       closeOrderDetail();
@@ -588,6 +690,7 @@ async function initApp() {
       toast(err.message, "error");
     }
   };
+
   $("orderEditPinsBtn").onclick = () => {
     const r = window._rideCache?.[window._activeRideId];
     if (!r) return;
@@ -596,8 +699,88 @@ async function initApp() {
     if (r.destLat && r.destLng) setDestination({ lat: r.destLat, lng: r.destLng }, true);
     if (r.destinationText) $("destInput").value = r.destinationText;
     showStep("stepPins");
-    toast("Geser pin, lalu Cek Tarif untuk update", "success");
+    toast("Geser pin, lalu Cek Tarif");
   };
+
+  $("orderRateTipBtn").onclick = async () => {
+    if (!window._activeRideId || !currentProfile) return;
+    try {
+      const tip = $("tipAmount").value;
+      await submitTipAndRating(window._activeRideId, currentProfile.uid, {
+        stars: selectedStars || null,
+        tip,
+        comment: $("orderNoteInput").value.trim()
+      });
+      toast("Rating & tips terkirim ke driver", "success");
+      closeOrderDetail();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+
+  $("saveProfileBtn").onclick = async () => {
+    try {
+      await updateUserProfile(currentProfile.uid, {
+        gender: $("profileGender").value || ""
+      });
+      currentProfile = await getCurrentUserProfile();
+      toast("Profil disimpan", "success");
+      renderProfile();
+    } catch (err) {
+      $("profileMsg").textContent = err.message;
+    }
+  };
+
+  $("submitKycBtn").onclick = async () => {
+    const btn = $("submitKycBtn");
+    setLoading(btn, true);
+    $("profileMsg").textContent = "";
+    try {
+      const selfie = $("kycSelfie").files?.[0];
+      const ktp = $("kycKtp").files?.[0];
+      if (!selfie || !ktp) throw new Error("Upload selfie + foto KTP");
+      let selfieUrl = null;
+      let ktpUrl = null;
+      try {
+        selfieUrl = await uploadKycImage(currentProfile.uid, selfie, "selfie");
+        ktpUrl = await uploadKycImage(currentProfile.uid, ktp, "ktp");
+      } catch (upErr) {
+        // Storage belum diaktifkan: simpan metadata saja
+        console.warn(upErr);
+        selfieUrl = "local:" + selfie.name;
+        ktpUrl = "local:" + ktp.name;
+      }
+      await submitKyc(currentProfile.uid, { selfieUrl, ktpUrl });
+      currentProfile = await getCurrentUserProfile();
+      toast("Verifikasi disetujui (demo MVP)", "success");
+      renderProfile();
+      await renderApp();
+    } catch (err) {
+      $("profileMsg").textContent = err.message;
+    } finally {
+      setLoading(btn, false);
+    }
+  };
+
+  // Persist pref changes
+  $("prefVerifiedOnly")?.addEventListener("change", async (e) => {
+    if (!currentProfile) return;
+    await updateUserProfile(currentProfile.uid, {
+      prefs: {
+        ...(currentProfile.prefs || {}),
+        verifiedDriversOnly: e.target.checked
+      }
+    });
+  });
+  $("prefSameGender")?.addEventListener("change", async (e) => {
+    if (!currentProfile) return;
+    await updateUserProfile(currentProfile.uid, {
+      prefs: {
+        ...(currentProfile.prefs || {}),
+        sameGenderOnly: e.target.checked
+      }
+    });
+  });
 
   onAuthStateChanged(async (user) => {
     if (user) await renderApp();
@@ -605,16 +788,17 @@ async function initApp() {
       currentProfile = null;
       if (unsubRides) { unsubRides(); unsubRides = null; }
       if (unsubActive) { unsubActive(); unsubActive = null; }
+      if (unsubFeedback) { unsubFeedback(); unsubFeedback = null; }
       show($("authOpenBtn"), true);
       show($("logoutBtn"), false);
       show($("userChip"), false);
+      show($("profileBtn"), false);
       show($("passengerSheet"), true);
       show($("driverSheet"), false);
       showStep("stepSearch");
-      const box = $("ordersPassenger");
-      if (box) box.innerHTML = "";
+      if ($("ordersPassenger")) $("ordersPassenger").innerHTML = "";
       show($("stepOrders"), false);
-      if (typeof closeOrderDetail === "function") closeOrderDetail();
+      closeOrderDetail();
     }
   });
 }

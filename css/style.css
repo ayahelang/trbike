@@ -338,3 +338,63 @@ textarea {
   resize: vertical;
   min-height: 64px;
 }
+
+
+/* Prefs & safety */
+.pref-box {
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: #f7f8fa;
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 0;
+}
+.check-row input { width: auto; margin: 0; }
+
+.charge-box {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+.charge-note { color: #c2410c !important; font-weight: 600; }
+
+.rating-box {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f7f8fa;
+  border-radius: 12px;
+}
+.stars {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.stars button {
+  border: none;
+  background: none;
+  font-size: 1.6rem;
+  color: #d0d4db;
+  cursor: pointer;
+  min-height: 40px;
+  padding: 0 4px;
+}
+.stars button.on { color: #f5a524; }
+
+.btn-top.ghost-dark {
+  background: #fff;
+  color: var(--ink);
+}
+.verify-info p { margin-top: 6px; font-size: 0.82rem; color: var(--ink-soft); }
