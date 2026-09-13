@@ -132,6 +132,7 @@ async function renderApp() {
     show($("passengerSheet"), true);
     show($("driverSheet"), false);
     showStep("stepSearch");
+    updateConfirmBtn();
     return;
   }
 
@@ -157,13 +158,23 @@ async function renderApp() {
 // ===== PASSENGER MAP FLOW =====
 function setupPassenger() {
   showStep("stepSearch");
-  $("confirmDestBtn").disabled = !getDestination();
+  updateConfirmBtn();
+  if (currentProfile) {
+    unsubRides = listenPassengerRides(currentProfile.uid, renderPassengerRides);
+  }
+}
 
-  window.onMapPinsChanged = ({ dest }) => {
-    $("confirmDestBtn").disabled = !dest;
-  };
-
-  unsubRides = listenPassengerRides(currentProfile.uid, renderPassengerRides);
+function updateConfirmBtn() {
+  const btn = $("confirmDestBtn");
+  if (!btn) return;
+  const hasDest = !!getDestination();
+  btn.disabled = !hasDest;
+  btn.classList.toggle("ready", hasDest);
+  if (hasDest) {
+    btn.removeAttribute("aria-disabled");
+  } else {
+    btn.setAttribute("aria-disabled", "true");
+  }
 }
 
 function renderPassengerRides(rides) {
@@ -434,6 +445,12 @@ async function initApp() {
   initMap("map");
   bindDestinationSearch($("destInput"), $("suggestList"));
 
+  // Selalu aktif — tidak tergantung login
+  window.onMapPinsChanged = ({ dest }) => {
+    updateConfirmBtn();
+  };
+  updateConfirmBtn();
+
   // Lokasi user + driver icons demo
   try {
     const pos = await locateUser();
@@ -458,7 +475,15 @@ async function initApp() {
     toast("Berhasil keluar");
   };
 
-  $("confirmDestBtn").onclick = onConfirmDest;
+  const confBtn = $("confirmDestBtn");
+  confBtn.onclick = onConfirmDest;
+  confBtn.addEventListener("touchend", (e) => {
+    // Hindari double-fire; biarkan click yang utama di device hybrid
+    if (confBtn.disabled) {
+      e.preventDefault();
+      toast("Pilih lokasi tujuan dari saran pencarian dulu", "error");
+    }
+  }, { passive: false });
   $("checkFareBtn").onclick = onCheckFare;
   $("findDriverBtn").onclick = onFindDriver;
   $("backToSearchBtn").onclick = () => showStep("stepSearch");

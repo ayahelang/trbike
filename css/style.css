@@ -218,3 +218,41 @@ label input, label select { margin-top: 6px; }
   }
   .modal { align-items: center; }
 }
+
+
+/* Touch & interaction polish */
+button, .btn-top, .suggest-item, .btn-link {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  min-height: 44px;
+}
+button.primary.ready {
+  box-shadow: 0 4px 16px rgba(15, 17, 21, 0.25);
+  transform: translateZ(0);
+}
+button.primary:not(:disabled):active {
+  transform: scale(0.98);
+}
+#destInput {
+  font-size: 16px; /* cegah zoom iOS saat focus */
+  min-height: 48px;
+}
+.suggest-item {
+  min-height: 48px;
+  padding: 14px 16px;
+}
+.leaflet-marker-draggable {
+  cursor: grab;
+}
+.sheet {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+/* Pastikan sheet tidak menutupi tombol di HP kecil */
+@media (max-height: 700px) {
+  .sheet { max-height: 52vh; }
+}
+@media (pointer: coarse) {
+  .pin-marker span { font-size: 11px; padding: 2px 8px; }
+  .bike-pin { width: 40px; height: 40px; font-size: 20px; }
+}

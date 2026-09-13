@@ -105,11 +105,16 @@ function setDestination(latlng, fly = false) {
   if (!destMarker) {
     destMarker = L.marker(destLatLng, {
       icon: DEST_ICON,
-      draggable: true
+      draggable: true,
+      autoPan: true
     }).addTo(map);
     destMarker.on("dragend", () => {
       destLatLng = destMarker.getLatLng();
       onPinsChanged();
+    });
+    // Touch: juga update saat drag
+    destMarker.on("drag", () => {
+      destLatLng = destMarker.getLatLng();
     });
   } else {
     destMarker.setLatLng(destLatLng);
@@ -120,6 +125,12 @@ function setDestination(latlng, fly = false) {
     map.flyTo(destLatLng, 15, { duration: 0.8 });
   }
   onPinsChanged();
+  // Pastikan tombol konfirmasi aktif
+  const btn = document.getElementById("confirmDestBtn");
+  if (btn) {
+    btn.disabled = false;
+    btn.classList.add("ready");
+  }
 }
 
 function onPinsChanged() {
@@ -180,13 +191,17 @@ function bindDestinationSearch(inputEl, listEl) {
           .join("");
         listEl.classList.remove("hidden");
         listEl.querySelectorAll(".suggest-item").forEach((btn) => {
-          btn.onclick = () => {
+          const pick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             const item = results[+btn.dataset.i];
             if (!item) return;
             inputEl.value = item.label;
             listEl.classList.add("hidden");
             setDestination({ lat: item.lat, lng: item.lng }, true);
           };
+          btn.onclick = pick;
+          btn.ontouchend = pick;
         });
       } catch (e) {
         console.warn("Nominatim error", e);
