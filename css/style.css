@@ -415,3 +415,28 @@ textarea {
   border-radius: 999px; box-shadow: var(--shadow); white-space: nowrap;
   max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
 }
+
+.user-chip {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
+}
+.user-avatar.has-photo { color: transparent; }

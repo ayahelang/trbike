@@ -32,8 +32,10 @@
   <header class="map-topbar">
     <div class="brand">TR<span>Bike</span></div>
     <div class="topbar-actions">
-      <button id="profileBtn" class="btn-top ghost-dark hidden" type="button">Profil</button>
-      <span id="userChip" class="user-chip hidden"></span>
+      <button id="userChip" class="user-chip hidden" type="button" title="Buka profil">
+        <span id="userAvatar" class="user-avatar">?</span>
+        <span id="userChipName">User</span>
+      </button>
       <button id="authOpenBtn" class="btn-top" type="button">Masuk</button>
       <button id="logoutBtn" class="btn-top ghost hidden" type="button">Keluar</button>
     </div>
@@ -67,11 +69,9 @@
       <div id="quoteCard" class="quote-card"></div>
       <div class="pay-box">
         <span class="k">Metode pembayaran</span>
-        <label class="check-row"><input type="radio" name="payMethod" value="cash" checked> Cash di tujuan</label>
+        <label class="check-row"><input type="checkbox" id="payCashCheck" checked> Cash di tujuan</label>
         <div class="pay-cash-info">
-          <p class="hint-text">Untuk aktifkan <strong>Cash</strong>, bayar dulu <strong>biaya layanan</strong> ke:
-            <br>Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong>
-            <br>atau scan QRIS di bawah (jika sudah diset).</p>
+          <p class="hint-text" id="serviceFeeHint">Untuk aktifkan <strong>Cash</strong>, transfer/QRIS dulu <strong>biaya layanan</strong> (nominal muncul setelah Cek Tarif) ke Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong>, atau scan QRIS di bawah.</p>
           <div id="qrisBox" class="qris-box">
             <img id="qrisImg" alt="QRIS TRBike" class="hidden" />
             <p class="hint-text">Belum ada gambar QRIS. Admin bisa pasang di <code>assets/qris.png</code>.</p>

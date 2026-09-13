@@ -138,7 +138,7 @@ async function renderApp() {
     show($("authOpenBtn"), true);
     show($("logoutBtn"), false);
     show($("userChip"), false);
-    show($("profileBtn"), false);
+    show($("userChip"), false);
     show($("passengerSheet"), true);
     show($("driverSheet"), false);
     showStep("stepSearch");
@@ -149,11 +149,8 @@ async function renderApp() {
 
   show($("authOpenBtn"), false);
   show($("logoutBtn"), true);
-  show($("profileBtn"), true);
   show($("userChip"), true);
-  $("userChip").textContent =
-    (currentProfile.fullName || "").split(" ")[0] +
-    (currentProfile.identityVerified ? " ✓" : "");
+  updateUserChip(currentProfile);
 
   // Pref checkboxes
   if ($("prefVerifiedOnly")) {
@@ -177,6 +174,26 @@ async function renderApp() {
     show($("passengerSheet"), true);
     show($("driverSheet"), false);
     setupPassenger();
+  }
+}
+
+function updateUserChip(p) {
+  if (!p) return;
+  const name = (p.fullName || "User").split(" ")[0];
+  const nameEl = $("userChipName");
+  if (nameEl) nameEl.textContent = name + (p.identityVerified ? " ✓" : "");
+  const av = $("userAvatar");
+  if (av) {
+    const photo = p.photoURL || p.kyc?.selfieUrl;
+    if (photo && !String(photo).startsWith("local:")) {
+      av.style.backgroundImage = "url(" + photo + ")";
+      av.textContent = "";
+      av.classList.add("has-photo");
+    } else {
+      av.style.backgroundImage = "";
+      av.classList.remove("has-photo");
+      av.textContent = (name[0] || "?").toUpperCase();
+    }
   }
 }
 
@@ -252,7 +269,8 @@ function openOrderDetail(rideId) {
       <div><span class="k">Jarak jemput</span><span>${r.pickupDistanceKm || 0} km</span></div>
       <div><span class="k">ETA</span><span>${eta}</span></div>
       <div><span class="k">Tarif</span><span><strong>${formatRupiah(r.fare?.total || 0)}</strong></span></div>
-      <div><span class="k">Hak driver</span><span>${formatRupiah(r.fare?.driverGross || 0)}</span></div>
+      <div><span class="k">Biaya layanan</span><span>${formatRupiah(r.fare?.serviceFee || 0)}</span></div>
+      <div><span class="k">Pendapatan bersih</span><span>${formatRupiah(r.fare?.driverGross || 0)}</span></div>
       ${r.tip ? `<div><span class="k">Tips</span><span>${formatRupiah(r.tip)}</span></div>` : ""}
     </div>`;
 
@@ -311,6 +329,9 @@ async function onCheckFare() {
   setLoading(btn, true);
   try {
     lastRoute = await getRouteInfo(pickup, dest);
+    if (!lastRoute || lastRoute.source === "estimate") {
+      if (typeof fitTripBounds === "function") fitTripBounds(pickup, dest);
+    }
     const tripKm = Math.max(0.5, +(lastRoute.km || 0).toFixed(1));
     const pickupKm = +(0.5 + Math.random() * 1.5).toFixed(1);
     const rules = await getFareRules();
@@ -320,8 +341,18 @@ async function onCheckFare() {
       <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km</div>
       <div class="row"><span>BBM perjalanan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
       <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
-      <div class="row"><span>Hak driver</span><span>${formatRupiah(lastQuote.driverPool)}</span></div>
+      <div class="row"><span>Biaya layanan</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
+      <div class="row"><span>Pajak</span><span>${formatRupiah(lastQuote.tax)}</span></div>
+      <div class="row"><span>Pendapatan bersih</span><span>${formatRupiah(lastQuote.driverGross)}</span></div>
       <div class="row total"><span>Total</span><span>${formatRupiah(lastQuote.total)}</span></div>`;
+    // Instruksi TF/QRIS = nominal biaya layanan
+    const feeHint = $("serviceFeeHint");
+    if (feeHint) {
+      feeHint.innerHTML =
+        "Transfer/QRIS <strong>biaya layanan " +
+        formatRupiah(lastQuote.serviceFee) +
+        "</strong> ke Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong> (atau scan QRIS di bawah).";
+    }
     showStep("stepQuote");
   } catch (err) {
     toast(err.message || "Gagal hitung tarif", "error");
@@ -352,9 +383,10 @@ async function onFindDriver() {
   } catch (_) {}
 
   // Cash wajib bukti bayar biaya layanan
-  const payMethod = document.querySelector('input[name="payMethod"]:checked')?.value || "cash";
+  const payCash = $("payCashCheck")?.checked !== false;
+  const payMethod = payCash ? "cash" : "transfer";
   let paymentProofUrl = null;
-  if (payMethod === "cash") {
+  if (payCash) {
     if (!feeProofBlob) {
       showStep("stepQuote");
       return toast("Upload bukti TF/QRIS biaya layanan dulu untuk opsi Cash", "error");
@@ -671,7 +703,7 @@ async function initApp() {
   $("googleBtn").onclick = handleGoogleLogin;
   $("authOpenBtn").onclick = openAuth;
   $("authCloseBtn").onclick = closeAuth;
-  $("profileBtn").onclick = openProfile;
+  if ($("userChip")) $("userChip").onclick = openProfile;
   $("profileClose").onclick = closeProfile;
   $("authModal").addEventListener("click", (e) => {
     if (e.target === $("authModal")) closeAuth();
@@ -897,7 +929,7 @@ async function initApp() {
       show($("authOpenBtn"), true);
       show($("logoutBtn"), false);
       show($("userChip"), false);
-      show($("profileBtn"), false);
+      show($("userChip"), false);
       show($("passengerSheet"), true);
       show($("driverSheet"), false);
       showStep("stepSearch");

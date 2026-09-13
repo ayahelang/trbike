@@ -120,7 +120,11 @@ function setDestination(latlng, fly = false) {
     destMarker.setLatLng(destLatLng);
   }
   if (fly && pickupLatLng) {
-    map.fitBounds(L.latLngBounds([pickupLatLng, destLatLng]).pad(0.25));
+    map.fitBounds(L.latLngBounds([pickupLatLng, destLatLng]), {
+      paddingTopLeft: [40, 80],
+      paddingBottomRight: [40, Math.min(window.innerHeight * 0.42, 320)],
+      maxZoom: 16
+    });
   } else if (fly) {
     map.flyTo(destLatLng, 15, { duration: 0.8 });
   }
@@ -244,6 +248,30 @@ function drawRoute(geojson) {
   routeLine = L.geoJSON(geojson, {
     style: { color: "#0f1115", weight: 4, opacity: 0.75 }
   }).addTo(map);
+  // Zoom agar seluruh rute muat di layar (sisa ruang untuk sheet bawah)
+  try {
+    const b = routeLine.getBounds();
+    if (b.isValid()) {
+      map.fitBounds(b, {
+        paddingTopLeft: [40, 80],
+        paddingBottomRight: [40, Math.min(window.innerHeight * 0.42, 320)],
+        maxZoom: 16,
+        animate: true
+      });
+    }
+  } catch (_) {}
+}
+
+/** Fit pickup + dest + route (fallback tanpa geometry) */
+function fitTripBounds(from, to) {
+  if (!map || !from || !to) return;
+  const b = L.latLngBounds([from, to]);
+  map.fitBounds(b, {
+    paddingTopLeft: [40, 80],
+    paddingBottomRight: [40, Math.min(window.innerHeight * 0.42, 320)],
+    maxZoom: 16,
+    animate: true
+  });
 }
 
 function clearRoute() {
