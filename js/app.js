@@ -179,24 +179,67 @@ function updateConfirmBtn() {
 
 function renderPassengerRides(rides) {
   const box = $("ordersPassenger");
-  if (!rides.length) {
-    box.innerHTML = '<div class="empty">Belum ada pesanan.</div>';
+  const wrap = $("stepOrders");
+  if (!currentProfile) {
+    if (wrap) show(wrap, false);
+    if (box) box.innerHTML = "";
     return;
   }
+  if (!rides.length) {
+    if (wrap) show(wrap, false);
+    box.innerHTML = "";
+    return;
+  }
+  show(wrap, true);
+  window._rideCache = {};
+  rides.slice(0, 8).forEach((r) => {
+    window._rideCache[r.id] = r;
+  });
   box.innerHTML = rides
-    .slice(0, 5)
+    .slice(0, 8)
     .map((r) => {
-      const canCancel = r.status === "requested";
-      return `<div class="item">
+      return `<button type="button" class="item item-click" data-ride-id="${r.id}">
         <div class="row">
           <b>${escapeHtml(r.destinationText || r.pickupText || "Order")}</b>
           <span class="badge status-${r.status}">${statusLabel(r.status)}</span>
         </div>
-        <div class="meta">${r.tripDistanceKm} km · ${formatRupiah(r.fare?.total || 0)}</div>
-        ${canCancel ? `<button class="btn-link" style="text-align:left;padding:6px 0" onclick="handleCancelRide('${r.id}')">Batalkan</button>` : ""}
-      </div>`;
+        <div class="meta">${r.tripDistanceKm || "—"} km · ${formatRupiah(r.fare?.total || 0)}</div>
+      </button>`;
     })
     .join("");
+
+  box.querySelectorAll("[data-ride-id]").forEach((el) => {
+    el.onclick = () => openOrderDetail(el.dataset.rideId);
+  });
+}
+
+function openOrderDetail(rideId) {
+  const r = window._rideCache?.[rideId];
+  if (!r) {
+    toast("Detail tidak ditemukan", "error");
+    return;
+  }
+  window._activeRideId = rideId;
+  const eta = r.etaMinutes ? `~${r.etaMinutes} mnt` : "—";
+  $("orderDetailBody").innerHTML = `
+    <div class="detail-grid">
+      <div><span class="k">Status</span><span class="badge status-${r.status}">${statusLabel(r.status)}</span></div>
+      <div><span class="k">Jemput</span><span>${escapeHtml(r.pickupText || "Lokasi saya")}</span></div>
+      <div><span class="k">Tujuan</span><span>${escapeHtml(r.destinationText || "—")}</span></div>
+      <div><span class="k">Jarak trip</span><span>${r.tripDistanceKm || 0} km</span></div>
+      <div><span class="k">Jarak jemput</span><span>${r.pickupDistanceKm || 0} km</span></div>
+      <div><span class="k">ETA</span><span>${eta}</span></div>
+      <div><span class="k">Tarif</span><span><strong>${formatRupiah(r.fare?.total || 0)}</strong></span></div>
+      <div><span class="k">Hak driver</span><span>${formatRupiah(r.fare?.driverGross || 0)}</span></div>
+    </div>
+  `;
+  $("orderNoteInput").value = r.note || "";
+  show($("orderDetailModal"), true);
+}
+
+function closeOrderDetail() {
+  show($("orderDetailModal"), false);
+  window._activeRideId = null;
 }
 
 window.handleCancelRide = async function (rideId) {
@@ -204,6 +247,7 @@ window.handleCancelRide = async function (rideId) {
   try {
     await cancelRide(rideId, currentProfile.uid);
     toast("Order dibatalkan", "success");
+    closeOrderDetail();
   } catch (err) {
     toast(err.message, "error");
   }
@@ -298,7 +342,8 @@ async function onFindDriver() {
         pickupLat: pickup.lat,
         pickupLng: pickup.lng,
         destLat: dest.lat,
-        destLng: dest.lng
+        destLng: dest.lng,
+        etaMinutes: lastRoute?.minutes || null
       },
       lastQuote
     );
@@ -471,7 +516,13 @@ async function initApp() {
     if (e.target === $("authModal")) closeAuth();
   });
   $("logoutBtn").onclick = async () => {
+    if (unsubRides) { unsubRides(); unsubRides = null; }
+    if (unsubActive) { unsubActive(); unsubActive = null; }
     await logoutUser();
+    const box = $("ordersPassenger");
+    if (box) box.innerHTML = "";
+    show($("stepOrders"), false);
+    closeOrderDetail();
     toast("Berhasil keluar");
   };
 
@@ -493,18 +544,77 @@ async function initApp() {
     showStep("stepQuote");
   };
 
+  $("orderDetailClose").onclick = closeOrderDetail;
+  $("orderDetailModal").addEventListener("click", (e) => {
+    if (e.target === $("orderDetailModal")) closeOrderDetail();
+  });
+  $("orderReorderBtn").onclick = async () => {
+    if (!window._activeRideId || !currentProfile) return;
+    try {
+      await reorderRide(window._activeRideId, currentProfile.uid);
+      closeOrderDetail();
+      showStep("stepSearching");
+      toast("Mencari driver lagi...", "success");
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        showStep("stepSearch");
+        toast("Order dikirim ulang", "success");
+      }, 2000);
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+  $("orderSaveNoteBtn").onclick = async () => {
+    if (!window._activeRideId || !currentProfile) return;
+    try {
+      const note = $("orderNoteInput").value.trim();
+      await updateRide(window._activeRideId, currentProfile.uid, { note });
+      if (window._rideCache?.[window._activeRideId]) {
+        window._rideCache[window._activeRideId].note = note;
+      }
+      toast("Catatan disimpan", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+  $("orderDeleteBtn").onclick = async () => {
+    if (!window._activeRideId || !currentProfile) return;
+    if (!confirm("Hapus pesanan ini permanen?")) return;
+    try {
+      await deleteRide(window._activeRideId, currentProfile.uid);
+      closeOrderDetail();
+      toast("Pesanan dihapus", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  };
+  $("orderEditPinsBtn").onclick = () => {
+    const r = window._rideCache?.[window._activeRideId];
+    if (!r) return;
+    closeOrderDetail();
+    if (r.pickupLat && r.pickupLng) setPickup({ lat: r.pickupLat, lng: r.pickupLng }, true);
+    if (r.destLat && r.destLng) setDestination({ lat: r.destLat, lng: r.destLng }, true);
+    if (r.destinationText) $("destInput").value = r.destinationText;
+    showStep("stepPins");
+    toast("Geser pin, lalu Cek Tarif untuk update", "success");
+  };
+
   onAuthStateChanged(async (user) => {
     if (user) await renderApp();
     else {
       currentProfile = null;
-      if (unsubRides) unsubRides();
-      if (unsubActive) unsubActive();
+      if (unsubRides) { unsubRides(); unsubRides = null; }
+      if (unsubActive) { unsubActive(); unsubActive = null; }
       show($("authOpenBtn"), true);
       show($("logoutBtn"), false);
       show($("userChip"), false);
       show($("passengerSheet"), true);
       show($("driverSheet"), false);
       showStep("stepSearch");
+      const box = $("ordersPassenger");
+      if (box) box.innerHTML = "";
+      show($("stepOrders"), false);
+      if (typeof closeOrderDetail === "function") closeOrderDetail();
     }
   });
 }
