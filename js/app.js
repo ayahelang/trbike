@@ -1,18 +1,20 @@
 /**
- * TRBike — Main Application Controller
+ * TRBike — Main App (Map-first)
  */
 
 let currentProfile = null;
 let unsubRides = null;
 let unsubActive = null;
+let lastQuote = null;
+let lastRoute = null;
+let searchTimeout = null;
 
-// ========== UTIL ==========
 const $ = (id) => document.getElementById(id);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-function show(el, visible = true) {
+function show(el, on = true) {
   if (!el) return;
-  el.classList.toggle("hidden", !visible);
+  el.classList.toggle("hidden", !on);
 }
 
 function toast(msg, type = "info") {
@@ -29,11 +31,24 @@ function setLoading(btn, loading) {
   btn.textContent = loading ? "Memproses..." : btn.dataset.originalText;
 }
 
-// ========== AUTH UI ==========
+function showStep(id) {
+  ["stepSearch", "stepPins", "stepQuote", "stepSearching"].forEach((s) => {
+    show($(s), s === id);
+  });
+}
+
+// ===== AUTH UI =====
+function openAuth() {
+  show($("authModal"), true);
+}
+function closeAuth() {
+  show($("authModal"), false);
+}
+
 function setupAuthTabs() {
-  $$(".tab").forEach(tab => {
+  $$(".tab").forEach((tab) => {
     tab.onclick = () => {
-      $$(".tab").forEach(t => t.classList.remove("active"));
+      $$(".tab").forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
       const isLogin = tab.dataset.tab === "login";
       show($("loginForm"), isLogin);
@@ -48,10 +63,10 @@ async function handleLogin(e) {
   const btn = e.target.querySelector("button");
   setLoading(btn, true);
   $("authMsg").textContent = "";
-
   try {
     await loginUser($("loginEmail").value.trim(), $("loginPassword").value);
     toast("Berhasil masuk", "success");
+    closeAuth();
   } catch (err) {
     $("authMsg").textContent = mapAuthError(err);
   } finally {
@@ -64,16 +79,27 @@ async function handleRegister(e) {
   const btn = e.target.querySelector("button");
   setLoading(btn, true);
   $("authMsg").textContent = "";
-
   try {
     const name = $("regName").value.trim();
-    const email = $("regEmail").value.trim();
-    const pass = $("regPassword").value;
-    const role = $("regRole").value;
-
     if (name.length < 2) throw new Error("Nama terlalu pendek");
-    await registerUser(name, email, pass, role);
+    await registerUser(name, $("regEmail").value.trim(), $("regPassword").value, $("regRole").value);
     toast("Akun berhasil dibuat", "success");
+    closeAuth();
+  } catch (err) {
+    $("authMsg").textContent = mapAuthError(err);
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+async function handleGoogleLogin() {
+  const btn = $("googleBtn");
+  setLoading(btn, true);
+  $("authMsg").textContent = "";
+  try {
+    await loginWithGoogle($("googleRole")?.value || "passenger");
+    toast("Berhasil masuk dengan Google", "success");
+    closeAuth();
   } catch (err) {
     $("authMsg").textContent = mapAuthError(err);
   } finally {
@@ -86,112 +112,55 @@ function mapAuthError(err) {
   if (code.includes("email-already-in-use")) return "Email sudah terdaftar.";
   if (code.includes("invalid-email")) return "Format email tidak valid.";
   if (code.includes("weak-password")) return "Password minimal 6 karakter.";
-  if (code.includes("user-not-found") || code.includes("wrong-password") || code.includes("invalid-credential")) {
+  if (code.includes("user-not-found") || code.includes("wrong-password") || code.includes("invalid-credential"))
     return "Email atau password salah.";
-  }
+  if (code.includes("popup-closed-by-user")) return "Login Google dibatalkan.";
+  if (code.includes("popup-blocked")) return "Popup diblokir browser.";
+  if (code.includes("operation-not-allowed")) return "Provider belum diaktifkan di Firebase.";
+  if (code.includes("unauthorized-domain")) return "Domain belum diizinkan di Firebase.";
   return err.message || "Terjadi kesalahan.";
 }
 
-// ========== RENDER ==========
+// ===== RENDER ROLE =====
 async function renderApp() {
   currentProfile = await getCurrentUserProfile();
 
   if (!currentProfile) {
-    show($("authView"), true);
-    show($("appView"), false);
+    show($("authOpenBtn"), true);
     show($("logoutBtn"), false);
+    show($("userChip"), false);
+    show($("passengerSheet"), true);
+    show($("driverSheet"), false);
+    showStep("stepSearch");
     return;
   }
 
-  show($("authView"), false);
-  show($("appView"), true);
+  show($("authOpenBtn"), false);
   show($("logoutBtn"), true);
+  show($("userChip"), true);
+  $("userChip").textContent = currentProfile.fullName.split(" ")[0];
 
-  $("userName").textContent = currentProfile.fullName;
-  $("roleBadge").textContent = currentProfile.role === "driver" ? "DRIVER" : "PENUMPANG";
-  $("roleBadge").className = "badge " + (currentProfile.role === "driver" ? "driver" : "passenger");
-
-  $("verificationBadge").innerHTML = currentProfile.identityVerified
-    ? `<span class="badge verified">Terverifikasi</span>`
-    : `<span class="badge muted">Belum verifikasi</span>`;
-
-  const isPassenger = currentProfile.role === "passenger";
-  show($("passengerView"), isPassenger);
-  show($("driverView"), !isPassenger);
-
-  // Bersihkan listener lama
   if (unsubRides) unsubRides();
   if (unsubActive) unsubActive();
 
-  if (isPassenger) {
-    setupPassenger();
-  } else {
+  if (currentProfile.role === "driver") {
+    show($("passengerSheet"), false);
+    show($("driverSheet"), true);
     setupDriver();
+  } else {
+    show($("passengerSheet"), true);
+    show($("driverSheet"), false);
+    setupPassenger();
   }
 }
 
-// ========== PASSENGER ==========
-let lastQuote = null;
-
+// ===== PASSENGER MAP FLOW =====
 function setupPassenger() {
-  $("quoteBtn").onclick = async () => {
-    const trip = +$("tripKm").value;
-    const pickup = +$("pickupKm").value;
-    const cls = $("serviceClass").value;
+  showStep("stepSearch");
+  $("confirmDestBtn").disabled = !getDestination();
 
-    if (trip <= 0) {
-      toast("Jarak perjalanan harus lebih dari 0", "error");
-      return;
-    }
-
-    const rules = await getFareRules();
-    lastQuote = calculateFare(trip, pickup, cls, rules);
-
-    $("quoteBox").innerHTML = `
-      <div class="price">${formatRupiah(lastQuote.total)}</div>
-      <div class="quote-meta">
-        <span>${lastQuote.tripKm} km trip</span>
-        <span>•</span>
-        <span>${lastQuote.pickupKm} km jemput</span>
-        <span>•</span>
-        <span class="class-tag">${cls}</span>
-      </div>
-      <div class="breakdown">
-        <div class="row"><span>BBM perjalanan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
-        <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
-        <div class="row"><span>Driver pool (hak driver)</span><span>${formatRupiah(lastQuote.driverPool)}</span></div>
-        <div class="row"><span>Biaya layanan</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
-        <div class="row"><span>Pajak</span><span>${formatRupiah(lastQuote.tax)}</span></div>
-        <div class="row total"><span>Total</span><span>${formatRupiah(lastQuote.total)}</span></div>
-      </div>
-      <p class="hint">Driver menerima sekitar <strong>${formatRupiah(lastQuote.driverGross)}</strong> (hak dari pembayaran ini)</p>
-    `;
-    show($("quoteBox"), true);
-    show($("requestBtn"), true);
-  };
-
-  $("requestBtn").onclick = async () => {
-    if (!lastQuote) return;
-    const btn = $("requestBtn");
-    setLoading(btn, true);
-
-    try {
-      await createRide(currentProfile.uid, {
-        pickupText: $("pickupText").value.trim() || "Lokasi penjemputan",
-        destinationText: $("destinationText").value.trim() || "",
-        pickupKm: $("pickupKm").value,
-        tripKm: $("tripKm").value,
-        serviceClass: $("serviceClass").value
-      }, lastQuote);
-
-      toast("Order berhasil dibuat!", "success");
-      show($("requestBtn"), false);
-      lastQuote = null;
-    } catch (err) {
-      toast(err.message || "Gagal membuat order", "error");
-    } finally {
-      setLoading(btn, false);
-    }
+  window.onMapPinsChanged = ({ dest }) => {
+    $("confirmDestBtn").disabled = !dest;
   };
 
   unsubRides = listenPassengerRides(currentProfile.uid, renderPassengerRides);
@@ -200,57 +169,161 @@ function setupPassenger() {
 function renderPassengerRides(rides) {
   const box = $("ordersPassenger");
   if (!rides.length) {
-    box.innerHTML = `<div class="empty">Belum ada pesanan.</div>`;
+    box.innerHTML = '<div class="empty">Belum ada pesanan.</div>';
     return;
   }
-
-  box.innerHTML = rides.map(r => {
-    const canCancel = r.status === "requested";
-    return `
-      <div class="item">
+  box.innerHTML = rides
+    .slice(0, 5)
+    .map((r) => {
+      const canCancel = r.status === "requested";
+      return `<div class="item">
         <div class="row">
-          <div>
-            <b>${escapeHtml(r.pickupText || "Lokasi")}</b>
-            ${r.destinationText ? `<div class="sub">${escapeHtml(r.destinationText)}</div>` : ""}
-          </div>
+          <b>${escapeHtml(r.destinationText || r.pickupText || "Order")}</b>
           <span class="badge status-${r.status}">${statusLabel(r.status)}</span>
         </div>
-        <div class="meta">
-          ${r.tripDistanceKm} km · ${formatRupiah(r.fare?.total || 0)}
-          ${r.driverId ? " · Driver sudah menerima" : ""}
-        </div>
-        ${canCancel ? `
-          <div style="margin-top:10px">
-            <button class="btn ghost-dark sm" onclick="handleCancelRide('${r.id}')">Batalkan</button>
-          </div>
-        ` : ""}
-      </div>
-    `;
-  }).join("");
+        <div class="meta">${r.tripDistanceKm} km · ${formatRupiah(r.fare?.total || 0)}</div>
+        ${canCancel ? `<button class="btn-link" style="text-align:left;padding:6px 0" onclick="handleCancelRide('${r.id}')">Batalkan</button>` : ""}
+      </div>`;
+    })
+    .join("");
 }
 
 window.handleCancelRide = async function (rideId) {
-  if (!confirm("Yakin ingin membatalkan order ini?")) return;
+  if (!confirm("Batalkan order ini?")) return;
   try {
     await cancelRide(rideId, currentProfile.uid);
     toast("Order dibatalkan", "success");
   } catch (err) {
-    toast(err.message || "Gagal membatalkan", "error");
+    toast(err.message, "error");
   }
 };
 
-// ========== DRIVER ==========
+async function onConfirmDest() {
+  if (!getDestination()) {
+    toast("Pilih tujuan dulu", "error");
+    return;
+  }
+  if (!getPickup()) {
+    try {
+      await locateUser();
+    } catch {
+      toast("Izinkan lokasi untuk titik jemput", "error");
+      return;
+    }
+  }
+  showStep("stepPins");
+  toast("Geser pin jika perlu, lalu Cek Tarif");
+}
+
+async function onCheckFare() {
+  const pickup = getPickup();
+  const dest = getDestination();
+  if (!pickup || !dest) {
+    toast("Titik jemput & tujuan wajib ada", "error");
+    return;
+  }
+  if (!currentProfile) {
+    openAuth();
+    toast("Masuk dulu untuk cek tarif & pesan");
+    return;
+  }
+
+  const btn = $("checkFareBtn");
+  setLoading(btn, true);
+  try {
+    lastRoute = await getRouteInfo(pickup, dest);
+    const tripKm = Math.max(0.5, +(lastRoute.km || 0).toFixed(1));
+    // Estimasi jarak jemput driver (MVP visual) ~ 0.5–2 km
+    const pickupKm = +(0.5 + Math.random() * 1.5).toFixed(1);
+
+    const rules = await getFareRules();
+    lastQuote = calculateFare(tripKm, pickupKm, "standard", rules);
+
+    $("quoteCard").innerHTML = `
+      <div class="price">${formatRupiah(lastQuote.total)}</div>
+      <div class="meta">
+        ~${lastRoute.minutes} mnt · ${tripKm} km perjalanan
+        ${lastRoute.source === "osrm" ? "" : " (estimasi)"}
+        · jemput ~${pickupKm} km
+      </div>
+      <div class="row"><span>BBM perjalanan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
+      <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
+      <div class="row"><span>Hak driver (pool)</span><span>${formatRupiah(lastQuote.driverPool)}</span></div>
+      <div class="row"><span>Layanan + pajak</span><span>${formatRupiah(lastQuote.serviceFee + lastQuote.tax)}</span></div>
+      <div class="row total"><span>Total</span><span>${formatRupiah(lastQuote.total)}</span></div>
+    `;
+    showStep("stepQuote");
+  } catch (err) {
+    toast(err.message || "Gagal hitung tarif", "error");
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+async function onFindDriver() {
+  if (!currentProfile) {
+    openAuth();
+    return;
+  }
+  if (!lastQuote || !getDestination() || !getPickup()) {
+    toast("Hitung tarif dulu", "error");
+    return;
+  }
+
+  showStep("stepSearching");
+  const dest = getDestination();
+  const pickup = getPickup();
+  const destLabel = $("destInput").value.trim() || "Tujuan";
+
+  try {
+    await createRide(
+      currentProfile.uid,
+      {
+        pickupText: "Lokasi saya",
+        destinationText: destLabel,
+        pickupKm: lastQuote.pickupKm,
+        tripKm: lastQuote.tripKm,
+        serviceClass: "standard",
+        pickupLat: pickup.lat,
+        pickupLng: pickup.lng,
+        destLat: dest.lat,
+        destLng: dest.lng
+      },
+      lastQuote
+    );
+
+    // Simulasi mencari driver
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      showStep("stepSearch");
+      toast("Order dikirim! Menunggu driver menerima.", "success");
+      $("destInput").value = "";
+      lastQuote = null;
+    }, 2500);
+  } catch (err) {
+    showStep("stepQuote");
+    toast(err.message || "Gagal membuat order", "error");
+  }
+}
+
+// ===== DRIVER =====
 function setupDriver() {
   loadDriverDashboard();
-
   $("toggleOnline").onclick = async () => {
     const btn = $("toggleOnline");
     setLoading(btn, true);
     try {
       const profile = await getDriverProfile(currentProfile.uid);
-      const next = !(profile?.isOnline);
+      const next = !profile?.isOnline;
       await setDriverOnline(currentProfile.uid, next);
-      toast(next ? "Anda sekarang ONLINE" : "Anda OFFLINE", "success");
+      // Simpan lokasi driver jika online
+      if (next && getPickup()) {
+        const p = getPickup();
+        await db.ref("drivers/" + currentProfile.uid).update({
+          lastLocation: { lat: p.lat, lng: p.lng, updatedAt: Date.now() }
+        });
+      }
+      toast(next ? "ONLINE" : "OFFLINE", "success");
       loadDriverDashboard();
     } catch (err) {
       toast(err.message, "error");
@@ -258,7 +331,6 @@ function setupDriver() {
       setLoading(btn, false);
     }
   };
-
   unsubRides = listenRequestedRides(renderDriverOrders);
   unsubActive = listenDriverActiveRides(currentProfile.uid, renderDriverActive);
 }
@@ -266,11 +338,9 @@ function setupDriver() {
 async function loadDriverDashboard() {
   const d = await getDriverProfile(currentProfile.uid);
   const isOnline = d?.isOnline || false;
-
   $("onlineStatus").textContent = isOnline ? "ONLINE" : "OFFLINE";
   $("onlineStatus").className = "badge " + (isOnline ? "online" : "offline");
   $("toggleOnline").textContent = isOnline ? "Go Offline" : "Go Online";
-
   $("driverWallet").textContent = formatRupiah(d?.walletBalance || 0);
   $("driverEarnings").textContent = formatRupiah(d?.totalEarnings || 0);
   $("driverRides").textContent = d?.totalRides || 0;
@@ -279,121 +349,137 @@ async function loadDriverDashboard() {
 function renderDriverOrders(rides) {
   const box = $("driverOrders");
   if (!rides.length) {
-    box.innerHTML = `<div class="empty">Tidak ada order masuk saat ini.</div>`;
+    box.innerHTML = '<div class="empty">Tidak ada order.</div>';
     return;
   }
-
-  box.innerHTML = rides.map(r => `
-    <div class="item">
+  box.innerHTML = rides
+    .map(
+      (r) => `<div class="item">
       <div class="row">
-        <div>
-          <b>${escapeHtml(r.pickupText || "Lokasi")}</b>
-          <div class="sub">Jemput ${r.pickupDistanceKm} km · Trip ${r.tripDistanceKm} km</div>
-        </div>
-        <button class="btn primary sm" onclick="handleAcceptRide('${r.id}')">Ambil</button>
+        <div><b>${escapeHtml(r.destinationText || r.pickupText)}</b>
+        <div class="sub">${r.tripDistanceKm} km · ${formatRupiah(r.fare?.total || 0)}</div></div>
+        <button class="primary sm" onclick="handleAcceptRide('${r.id}')">Ambil</button>
       </div>
-      <div class="meta">${formatRupiah(r.fare?.total || 0)} · Estimasi hak driver ${formatRupiah(r.fare?.driverGross || 0)}</div>
-    </div>
-  `).join("");
+    </div>`
+    )
+    .join("");
 }
 
 function renderDriverActive(rides) {
   const box = $("driverActive");
-  if (!box) return;
-
   if (!rides.length) {
-    box.innerHTML = `<div class="empty">Belum ada perjalanan aktif.</div>`;
+    box.innerHTML = '<div class="empty">Tidak ada perjalanan aktif.</div>';
     return;
   }
-
-  box.innerHTML = rides.map(r => `
-    <div class="item">
+  box.innerHTML = rides
+    .map(
+      (r) => `<div class="item">
       <div class="row">
-        <div>
-          <b>${escapeHtml(r.pickupText || "Lokasi")}</b>
-          <div class="sub">${r.tripDistanceKm} km · ${formatRupiah(r.fare?.total || 0)}</div>
-        </div>
-        <button class="btn success sm" onclick="handleCompleteRide('${r.id}')">Selesaikan</button>
+        <div><b>${escapeHtml(r.destinationText || r.pickupText)}</b>
+        <div class="sub">Hak: ${formatRupiah(r.fare?.driverGross || 0)}</div></div>
+        <button class="success sm" style="width:auto;padding:8px 12px" onclick="handleCompleteRide('${r.id}')">Selesai</button>
       </div>
-      <div class="meta">Hak driver: ${formatRupiah(r.fare?.driverGross || 0)}</div>
-    </div>
-  `).join("");
+    </div>`
+    )
+    .join("");
 }
 
 window.handleAcceptRide = async function (rideId) {
   try {
     await acceptRide(rideId, currentProfile.uid);
-    toast("Order berhasil diterima!", "success");
+    toast("Order diterima!", "success");
     loadDriverDashboard();
   } catch (err) {
-    toast(err.message || "Gagal mengambil order", "error");
+    toast(err.message, "error");
   }
 };
 
 window.handleCompleteRide = async function (rideId) {
-  if (!confirm("Selesaikan perjalanan ini? Hak driver akan ditambahkan ke saldo.")) return;
+  if (!confirm("Selesaikan perjalanan? Hak driver masuk saldo.")) return;
   try {
     const result = await completeRide(rideId, currentProfile.uid);
-    toast(`Selesai! +${formatRupiah(result.driverGross)} masuk ke saldo`, "success");
+    toast(`+${formatRupiah(result.driverGross)} masuk saldo`, "success");
     loadDriverDashboard();
   } catch (err) {
-    toast(err.message || "Gagal menyelesaikan order", "error");
+    toast(err.message, "error");
   }
 };
 
 function statusLabel(s) {
-  const map = {
-    requested: "Menunggu",
-    accepted: "Diterima",
-    driver_arriving: "Menuju",
-    in_trip: "Perjalanan",
-    completed: "Selesai",
-    cancelled: "Dibatalkan"
-  };
-  return map[s] || s;
+  return (
+    {
+      requested: "Menunggu",
+      accepted: "Diterima",
+      completed: "Selesai",
+      cancelled: "Batal"
+    }[s] || s
+  );
 }
 
 function escapeHtml(str) {
-  if (!str) return "";
-  return String(str)
+  return String(str || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
 
-// ========== INIT ==========
-function initApp() {
+// ===== INIT =====
+async function initApp() {
   if (!initFirebase()) {
-    $("authMsg").textContent = "Firebase belum dikonfigurasi. Edit js/config.js";
-    show($("authView"), true);
+    toast("Firebase gagal dimuat", "error");
     return;
   }
 
-  if (firebaseConfig.apiKey === "YOUR_API_KEY") {
-    $("authMsg").innerHTML = `Firebase belum dikonfigurasi.<br>Buka <code>js/config.js</code> dan isi dengan config project Anda.`;
-    show($("authView"), true);
-    return;
+  initMap("map");
+  bindDestinationSearch($("destInput"), $("suggestList"));
+
+  // Lokasi user + driver icons demo
+  try {
+    const pos = await locateUser();
+    showNearbyDrivers(pos, 6);
+  } catch {
+    map.setView([-6.2, 106.816666], 13);
+    showNearbyDrivers({ lat: -6.2, lng: 106.816666 }, 5);
+    toast("Aktifkan lokasi untuk titik jemput akurat");
   }
 
   setupAuthTabs();
   $("loginForm").onsubmit = handleLogin;
   $("registerForm").onsubmit = handleRegister;
+  $("googleBtn").onclick = handleGoogleLogin;
+  $("authOpenBtn").onclick = openAuth;
+  $("authCloseBtn").onclick = closeAuth;
+  $("authModal").addEventListener("click", (e) => {
+    if (e.target === $("authModal")) closeAuth();
+  });
   $("logoutBtn").onclick = async () => {
     await logoutUser();
     toast("Berhasil keluar");
   };
 
+  $("confirmDestBtn").onclick = onConfirmDest;
+  $("checkFareBtn").onclick = onCheckFare;
+  $("findDriverBtn").onclick = onFindDriver;
+  $("backToSearchBtn").onclick = () => showStep("stepSearch");
+  $("backToPinsBtn").onclick = () => showStep("stepPins");
+  $("cancelSearchBtn").onclick = () => {
+    clearTimeout(searchTimeout);
+    showStep("stepQuote");
+  };
+
   onAuthStateChanged(async (user) => {
-    if (user) {
-      await renderApp();
-    } else {
+    if (user) await renderApp();
+    else {
       currentProfile = null;
       if (unsubRides) unsubRides();
       if (unsubActive) unsubActive();
-      show($("authView"), true);
-      show($("appView"), false);
+      show($("authOpenBtn"), true);
       show($("logoutBtn"), false);
+      show($("userChip"), false);
+      show($("passengerSheet"), true);
+      show($("driverSheet"), false);
+      showStep("stepSearch");
     }
   });
 }

@@ -10,7 +10,7 @@ Aplikasi transportasi online roda dua berbasis web dengan fokus transparan dan a
 - Stack: HTML · CSS · Vanilla JS · Firebase (versi gratis)
 
 ## Fitur MVP 1.0
-- Register / Login (Email + Password)
+- Register / Login (Email + Password + **Google**)
 - Role Penumpang & Driver
 - Kalkulator tarif dengan breakdown lengkap (BBM trip + pickup, driver pool, service fee, pajak)
 - Buat order (penumpang)
@@ -26,6 +26,8 @@ Semua dokumentasi ada di folder `docs/`:
 - `03_FARE_ALGORITHM.md`
 - `04_SECURITY_RULES.md`
 - `05_SETUP_GUIDE.md`
+- `07_GOOGLE_SIGNIN_SETUP.md`
+- `08_TESTING_CHECKLIST_SKRIPSI.md`
 
 ## Cara Setup Cepat
 1. Buat project Firebase

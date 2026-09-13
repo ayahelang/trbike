@@ -16,6 +16,10 @@ async function createRide(passengerId, data, fareResult) {
     pickupDistanceKm: Number(data.pickupKm) || 0,
     tripDistanceKm: Number(data.tripKm) || 0,
     serviceClass: data.serviceClass || "standard",
+    pickupLat: data.pickupLat || null,
+    pickupLng: data.pickupLng || null,
+    destLat: data.destLat || null,
+    destLng: data.destLng || null,
     fare: {
       total: fareResult.total,
       tripFuel: fareResult.tripFuel,

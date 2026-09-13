@@ -2,57 +2,111 @@
 <html lang="id">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="TRBike — Terbaik untuk Driver dan Penumpang. Aplikasi ojek online dengan tarif transparan dan adil.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <meta name="description" content="TRBike — Terbaik untuk Driver dan Penumpang">
   <meta name="theme-color" content="#0f1115">
   <title>TRBike — Terbaik untuk Driver dan Penumpang</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/style.css">
-  <!-- Firebase SDK (compat for simplicity on GitHub Pages) -->
   <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-database-compat.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
-<body>
-  <header class="topbar">
+<body class="map-mode">
+  <!-- FULL MAP -->
+  <div id="map"></div>
+
+  <!-- TOP BAR -->
+  <header class="map-topbar">
     <div class="brand">TR<span>Bike</span></div>
-    <div class="tagline">Terbaik untuk Driver dan Penumpang</div>
-    <button id="logoutBtn" class="ghost hidden">Keluar</button>
+    <div class="topbar-actions">
+      <span id="userChip" class="user-chip hidden"></span>
+      <button id="authOpenBtn" class="btn-top">Masuk</button>
+      <button id="logoutBtn" class="btn-top ghost hidden">Keluar</button>
+    </div>
   </header>
 
-  <main class="container">
-    <!-- ========== AUTH ========== -->
-    <section id="authView" class="card auth">
-      <h1>TRBike</h1>
-      <p>Transportasi online dengan tarif transparan.<br>Hak driver jelas. Pengalaman penumpang nyaman.</p>
+  <!-- PASSENGER BOTTOM SHEET -->
+  <div id="passengerSheet" class="sheet">
+    <div class="sheet-handle"></div>
 
+    <div id="stepSearch" class="sheet-step">
+      <label class="field-label">Mau ke mana?</label>
+      <div class="search-wrap">
+        <input id="destInput" type="text" placeholder="Cari lokasi tujuan..." autocomplete="off">
+        <div id="suggestList" class="suggest-list hidden"></div>
+      </div>
+      <p class="hint-text">Titik jemput mengikuti lokasi kamu. Geser pin di peta jika perlu.</p>
+      <button id="confirmDestBtn" class="primary" disabled>Konfirmasi titik tujuan</button>
+    </div>
+
+    <div id="stepPins" class="sheet-step hidden">
+      <p class="hint-text">Geser pin <strong>Jemput</strong> & <strong>Tujuan</strong> di peta agar lebih pas.</p>
+      <button id="checkFareBtn" class="primary">Cek Tarif</button>
+      <button id="backToSearchBtn" class="btn-link">Ubah tujuan</button>
+    </div>
+
+    <div id="stepQuote" class="sheet-step hidden">
+      <div id="quoteCard" class="quote-card"></div>
+      <button id="findDriverBtn" class="success">Cari Driver</button>
+      <button id="backToPinsBtn" class="btn-link">Kembali</button>
+    </div>
+
+    <div id="stepSearching" class="sheet-step hidden">
+      <div class="searching">
+        <div class="pulse"></div>
+        <p>Mencari driver terdekat...</p>
+      </div>
+      <button id="cancelSearchBtn" class="btn-link">Batalkan</button>
+    </div>
+
+    <div id="stepOrders" class="sheet-step">
+      <h3 class="sheet-title">Pesanan saya</h3>
+      <div id="ordersPassenger" class="list compact"></div>
+    </div>
+  </div>
+
+  <!-- DRIVER PANEL -->
+  <div id="driverSheet" class="sheet hidden">
+    <div class="sheet-handle"></div>
+    <div class="driver-status-row">
+      <span id="onlineStatus" class="badge offline">OFFLINE</span>
+      <button id="toggleOnline" class="primary sm">Go Online</button>
+    </div>
+    <div class="stats row3">
+      <div class="stat"><div class="value" id="driverWallet">Rp0</div><div class="label">Saldo</div></div>
+      <div class="stat"><div class="value" id="driverEarnings">Rp0</div><div class="label">Total</div></div>
+      <div class="stat"><div class="value" id="driverRides">0</div><div class="label">Order</div></div>
+    </div>
+    <h3 class="sheet-title">Order masuk</h3>
+    <div id="driverOrders" class="list compact"></div>
+    <h3 class="sheet-title">Perjalanan aktif</h3>
+    <div id="driverActive" class="list compact"></div>
+  </div>
+
+  <!-- AUTH MODAL -->
+  <div id="authModal" class="modal hidden">
+    <div class="modal-card">
+      <button id="authCloseBtn" class="modal-close">×</button>
+      <h2>TRBike</h2>
+      <p class="sub">Terbaik untuk Driver dan Penumpang</p>
       <div class="tabs">
         <button class="tab active" data-tab="login">Masuk</button>
         <button class="tab" data-tab="register">Daftar</button>
       </div>
-
       <form id="loginForm">
-        <label>Email
-          <input id="loginEmail" type="email" placeholder="nama@email.com" required autocomplete="email">
-        </label>
-        <label>Password
-          <input id="loginPassword" type="password" placeholder="Minimal 6 karakter" required autocomplete="current-password">
-        </label>
+        <label>Email<input id="loginEmail" type="email" required autocomplete="email"></label>
+        <label>Password<input id="loginPassword" type="password" required autocomplete="current-password"></label>
         <button type="submit" class="primary">Masuk</button>
       </form>
-
       <form id="registerForm" class="hidden">
-        <label>Nama lengkap
-          <input id="regName" type="text" placeholder="Nama Anda" required autocomplete="name">
-        </label>
-        <label>Email
-          <input id="regEmail" type="email" placeholder="nama@email.com" required autocomplete="email">
-        </label>
-        <label>Password
-          <input id="regPassword" type="password" placeholder="Minimal 6 karakter" minlength="6" required autocomplete="new-password">
-        </label>
+        <label>Nama<input id="regName" required autocomplete="name"></label>
+        <label>Email<input id="regEmail" type="email" required autocomplete="email"></label>
+        <label>Password<input id="regPassword" type="password" minlength="6" required autocomplete="new-password"></label>
         <label>Daftar sebagai
           <select id="regRole">
             <option value="passenger">Penumpang</option>
@@ -61,117 +115,17 @@
         </label>
         <button type="submit" class="primary">Buat Akun</button>
       </form>
-
+      <div class="auth-divider"><span>atau</span></div>
+      <label>Google sebagai
+        <select id="googleRole">
+          <option value="passenger">Penumpang</option>
+          <option value="driver">Driver</option>
+        </select>
+      </label>
+      <button type="button" id="googleBtn" class="btn google">Lanjutkan dengan Google</button>
       <p id="authMsg" class="msg"></p>
-    </section>
-
-    <!-- ========== APP ========== -->
-    <section id="appView" class="hidden">
-      <div class="welcome card">
-        <div>
-          <small>Selamat datang</small>
-          <h2 id="userName">—</h2>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span id="roleBadge" class="badge">—</span>
-          <span id="verificationBadge"></span>
-        </div>
-      </div>
-
-      <!-- PASSENGER -->
-      <section id="passengerView" class="grid two">
-        <div class="card">
-          <h3>Pesan TRBike</h3>
-          <label>Lokasi penjemputan
-            <input id="pickupText" type="text" placeholder="Contoh: Stasiun Palmerah">
-          </label>
-          <label>Tujuan (opsional)
-            <input id="destinationText" type="text" placeholder="Contoh: Mall Taman Anggrek">
-          </label>
-          <div class="grid two">
-            <label>Jarak jemput (km)
-              <input id="pickupKm" type="number" min="0" step="0.1" value="1.0">
-            </label>
-            <label>Jarak perjalanan (km)
-              <input id="tripKm" type="number" min="0.5" step="0.1" value="4.0">
-            </label>
-          </div>
-          <label>Kelas layanan
-            <select id="serviceClass">
-              <option value="standard">Standard</option>
-              <option value="comfort">Comfort (+10%)</option>
-              <option value="premium">Premium (+20%)</option>
-            </select>
-          </label>
-          <button id="quoteBtn" class="primary">Hitung Tarif</button>
-          <div id="quoteBox" class="quote hidden"></div>
-          <button id="requestBtn" class="success hidden">Pesan Sekarang</button>
-        </div>
-
-        <div class="card">
-          <h3>Prinsip Tarif Adil</h3>
-          <ul style="padding-left:18px;font-size:0.9rem;color:var(--ink-soft);line-height:1.7">
-            <li>BBM dihitung untuk perjalanan <strong>dan</strong> penjemputan</li>
-            <li>Driver pool = hak driver (bukan gaji platform)</li>
-            <li>Biaya layanan & pajak ditampilkan transparan</li>
-            <li>Tidak ada biaya tersembunyi</li>
-          </ul>
-          <div class="notice">
-            Parameter tarif bersifat prototype dan dapat dikalibrasi berdasarkan riset lapangan serta benchmark kompetitor.
-          </div>
-        </div>
-
-        <div class="card full">
-          <h3>Pesanan Saya</h3>
-          <div id="ordersPassenger" class="list">
-            <div class="empty">Belum ada pesanan.</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- DRIVER -->
-      <section id="driverView" class="grid two hidden">
-        <div class="card">
-          <h3>Dashboard Driver</h3>
-          <div class="driver-status">
-            <span id="onlineStatus" class="badge offline">OFFLINE</span>
-            <button id="toggleOnline" class="primary">Go Online</button>
-          </div>
-          <div class="stats">
-            <div class="stat">
-              <div class="value" id="driverWallet">Rp0</div>
-              <div class="label">Saldo (Hak)</div>
-            </div>
-            <div class="stat">
-              <div class="value" id="driverEarnings">Rp0</div>
-              <div class="label">Total Pendapatan</div>
-            </div>
-            <div class="stat">
-              <div class="value" id="driverRides">0</div>
-              <div class="label">Total Order</div>
-            </div>
-          </div>
-          <p class="muted" style="margin-top:14px;font-size:0.82rem">
-            Saldo adalah <strong>hak driver</strong> dari pembayaran penumpang, bukan gaji yang dibayarkan TRBike.
-          </p>
-        </div>
-
-        <div class="card">
-          <h3>Order Masuk</h3>
-          <div id="driverOrders" class="list">
-            <div class="empty">Tidak ada order masuk saat ini.</div>
-          </div>
-        </div>
-
-        <div class="card full">
-          <h3>Perjalanan Aktif</h3>
-          <div id="driverActive" class="list">
-            <div class="empty">Belum ada perjalanan aktif.</div>
-          </div>
-        </div>
-      </section>
-    </section>
-  </main>
+    </div>
+  </div>
 
   <div id="toast" class="toast"></div>
 
@@ -180,6 +134,7 @@
   <script src="js/auth.js"></script>
   <script src="js/passenger.js"></script>
   <script src="js/driver.js"></script>
+  <script src="js/map.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
