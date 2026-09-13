@@ -9,13 +9,13 @@
  */
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  apiKey: "AIzaSyDywY8Q9lrU3nZdtvIZBRsjTO_xN6W2qFY",
+  authDomain: "trbike.firebaseapp.com",
   databaseURL: "https://YOUR_PROJECT-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  projectId: "trbike",
+  storageBucket: "trbike.firebasestorage.app",
+  messagingSenderId: "1049681707234",
+  appId: "1:1049681707234:web:1c1d98ca8be09615a01ebb"
 };
 
 // Inisialisasi Firebase (akan di-load dari CDN di index.html)
