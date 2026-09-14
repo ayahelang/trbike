@@ -47,20 +47,34 @@
   <!-- PASSENGER -->
   <div id="passengerSheet" class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-role-banner passenger"><span class="role-pill passenger">Penumpang / Pelanggan</span> <span class="sheet-role-hint">Antar · Belanja · Paket</span></div>
+    <div class="sheet-role-banner passenger"><span class="role-pill passenger">Penumpang / Pelanggan</span> <span class="sheet-role-hint">Ride · Food · Send · Mart · Shop</span></div>
 
-    <div id="stepSearch" class="sheet-step">
-      <label class="field-label">Mau ke mana?</label>
+    <div id="stepHome" class="sheet-step">
+      <p class="home-greeting">Mau pakai jasa apa hari ini?</p>
+      <div id="serviceGrid" class="service-grid"></div>
+      <p class="hint-text">Untuk resto, salon, apotek, toko, atau kurir — pilih layanan lalu isi titik ambil & antar.</p>
+    </div>
+
+    <div id="stepSearch" class="sheet-step hidden">
+      <div class="selected-service-bar" id="selectedServiceBar"></div>
+      <label class="field-label" id="destFieldLabel">Mau ke mana?</label>
       <div class="search-wrap">
         <input id="destInput" type="text" placeholder="Cari lokasi tujuan..." autocomplete="off">
         <div id="suggestList" class="suggest-list hidden"></div>
       </div>
+      <label class="field-label hidden" id="pickupNoteLabel">Titik ambil / toko / resto
+        <input id="pickupNoteInput" type="text" placeholder="Contoh: Warung Padang depan kampus">
+      </label>
+      <label class="field-label hidden" id="itemNoteLabel">Catatan barang / pesanan
+        <input id="itemNoteInput" type="text" placeholder="Contoh: 2 porsi ayam, obat batuk, dokumen A4">
+      </label>
       <div class="pref-box">
         <label class="check-row"><input type="checkbox" id="prefVerifiedOnly" checked> Hanya driver terverifikasi</label>
         <label class="check-row hidden" id="prefSameGenderWrap"><input type="checkbox" id="prefSameGender"> Hanya driver wanita (khusus penumpang wanita terverifikasi)</label>
       </div>
-      <p class="hint-text">Titik jemput mengikuti lokasi kamu. Geser pin di peta jika perlu.</p>
-      <button id="confirmDestBtn" class="primary" disabled type="button">Konfirmasi titik tujuan</button>
+      <p class="hint-text">Titik di peta bisa digeser. Untuk kirim/ambil, sesuaikan pin jemput ke lokasi toko.</p>
+      <button id="confirmDestBtn" class="primary" disabled type="button">Lanjut atur titik</button>
+      <button id="backToHomeBtn" class="btn-link" type="button">← Ganti layanan</button>
     </div>
 
     <div id="stepPins" class="sheet-step hidden">
@@ -113,6 +127,9 @@
       <label class="check-row"><input type="checkbox" id="driverPrefVerifiedPax"> Hanya penumpang terverifikasi</label>
       <label class="check-row hidden" id="driverPrefWomenWrap"><input type="checkbox" id="driverPrefWomenOnly"> Hanya penumpang wanita (driver wanita terverifikasi)</label>
     </div>
+    <h3 class="sheet-title">Layanan yang saya aktifkan</h3>
+    <p class="hint-text">Centang layanan yang Anda terima. Pelanggan hanya melihat driver yang aktif di layanan tersebut.</p>
+    <div id="driverServicesBox" class="driver-services-box"></div>
     <div class="stats row3">
       <div class="stat"><div class="value" id="driverWallet">Rp0</div><div class="label">Saldo</div></div>
       <div class="stat"><div class="value" id="driverEarnings">Rp0</div><div class="label">Total</div></div>
@@ -297,6 +314,7 @@
   <div id="toast" class="toast"></div>
 
   <script src="js/config.js"></script>
+  <script src="js/services.js"></script>
   <script src="js/fare.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/passenger.js"></script>

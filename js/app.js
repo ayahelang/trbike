@@ -42,11 +42,15 @@ function setLoading(btn, loading) {
 }
 
 function showStep(id) {
-  ["stepSearch", "stepPins", "stepQuote", "stepSearching"].forEach((s) => show($(s), s === id));
+  ["stepHome", "stepSearch", "stepPins", "stepQuote", "stepSearching"].forEach((s) => {
+    const el = $(s);
+    if (el) show(el, s === id);
+  });
   if (typeof window._setPresenceStatus === "function" && currentProfile?.role !== "driver") {
-    if (id === "stepPins" || id === "stepQuote") window._setPresenceStatus("ordering");
+    if (id === "stepHome") window._setPresenceStatus("logged_in");
     else if (id === "stepSearching") window._setPresenceStatus("waiting");
-    else if (id === "stepSearch") window._setPresenceStatus("logged_in");
+    else if (id === "stepSearch" || id === "stepPins" || id === "stepQuote")
+      window._setPresenceStatus("ordering");
   }
 }
 
@@ -158,10 +162,10 @@ async function renderApp() {
     show($("authOpenBtn"), true);
     show($("logoutBtn"), false);
     show($("userChip"), false);
-    show($("userChip"), false);
     show($("passengerSheet"), true);
     show($("driverSheet"), false);
-    showStep("stepSearch");
+    if (typeof renderServiceGrid === "function") renderServiceGrid();
+    showStep("stepHome");
     updateConfirmBtn();
     show($("stepOrders"), false);
     return;
@@ -294,7 +298,8 @@ function applyLoggedOutUI() {
   show($("userChip"), false);
   show($("passengerSheet"), true);
   show($("driverSheet"), false);
-  showStep("stepSearch");
+  if (typeof renderServiceGrid === "function") renderServiceGrid();
+  showStep("stepHome");
   if ($("ordersPassenger")) $("ordersPassenger").innerHTML = "";
   if ($("driverOrders")) $("driverOrders").innerHTML = "";
   if ($("driverActive")) $("driverActive").innerHTML = "";
@@ -392,7 +397,8 @@ function startPresenceForUser(profile) {
         more = {
           rating: d?.rating ?? 5,
           ratingCount: d?.ratingCount ?? 0,
-          services: d?.services || "Antar penumpang · Paket · Makanan · Belanja",
+          services: d?.services || (d?.enabledServices || DEFAULT_DRIVER_SERVICES).map((id) => getServiceById(id).short).join(" · "),
+          enabledServices: d?.enabledServices || DEFAULT_DRIVER_SERVICES,
           coverRadiusKm: d?.coverRadiusKm ?? 10,
           isOnline: d?.isOnline !== false ? (extra.isOnline !== false) : false
         };
@@ -504,8 +510,9 @@ async function openDriverProfileModal(driverUid, presenceData, dist) {
     if ($("destInput")) $("destInput").value = dest;
     closeDriverProfileModal();
     show($("passengerSheet"), true);
-    showStep("stepSearch");
-    toast("Tujuan diisi. Geser pin jemput/tujuan lalu Cek Tarif. Order akan diprioritaskan ke driver ini jika tersedia.", "success");
+    selectService(window._selectedServiceId || "ride");
+    if ($("destInput")) $("destInput").value = dest;
+    toast("Tujuan diisi. Sesuaikan pin lalu Cek Tarif. Order diprioritaskan ke driver ini.", "success");
     // Coba geocode tujuan sederhana lewat existing search jika ada
     try {
       if (typeof bindDestinationSearch === "function") {
@@ -644,11 +651,62 @@ function updateConfirmBtn() {
 }
 
 function setupPassenger() {
-  showStep("stepSearch");
+  window._selectedServiceId = window._selectedServiceId || "ride";
+  renderServiceGrid();
+  showStep("stepHome");
   updateConfirmBtn();
   if (currentProfile) {
     unsubRides = listenPassengerRides(currentProfile.uid, renderPassengerRides);
   }
+}
+
+function renderServiceGrid() {
+  const box = $("serviceGrid");
+  if (!box || typeof TRBIKE_SERVICES === "undefined") return;
+  const cur = window._selectedServiceId || "ride";
+  box.innerHTML = TRBIKE_SERVICES.map((s) => `
+    <button type="button" class="service-tile ${cur === s.id ? "active" : ""}" data-service="${s.id}" style="--svc:${s.color}">
+      <span class="svc-icon">${s.icon}</span>
+      <span class="svc-name">${s.name}</span>
+      <span class="svc-short">${s.short}</span>
+    </button>
+  `).join("");
+  box.querySelectorAll("[data-service]").forEach((btn) => {
+    btn.onclick = () => selectService(btn.dataset.service);
+  });
+}
+
+function selectService(id) {
+  window._selectedServiceId = id;
+  const s = getServiceById(id);
+  renderServiceGrid();
+  // bar
+  const bar = $("selectedServiceBar");
+  if (bar) {
+    bar.innerHTML = `<span class="svc-chip" style="background:${s.color}22;border-color:${s.color}">${s.icon} <strong>${s.name}</strong> · ${s.short}</span>
+      <span class="muted" style="font-size:0.75rem">${s.desc}</span>`;
+  }
+  // labels
+  const needsPickupNote = (s.fields || []).includes("pickupNote");
+  const needsItem = (s.fields || []).includes("itemNote");
+  show($("pickupNoteLabel"), needsPickupNote);
+  show($("itemNoteLabel"), needsItem);
+  if ($("destInput")) {
+    $("destInput").placeholder =
+      id === "ride" ? "Cari lokasi tujuan..." : "Alamat penerima / tujuan antar...";
+  }
+  const dl = $("destFieldLabel");
+  if (dl) {
+    const text =
+      id === "ride" ? "Mau ke mana?" :
+      id === "food" ? "Antar makanan ke mana?" :
+      (id === "send" || id === "docs" || id === "gift") ? "Kirim ke mana?" :
+      "Tujuan / alamat penerima";
+    // keep structure: first text node or whole label
+    dl.innerHTML = text;
+  }
+  showStep("stepSearch");
+  updateConfirmBtn();
 }
 
 function renderPassengerRides(rides) {
@@ -889,14 +947,17 @@ async function onFindDriver() {
         paymentMethod: payMethod,
         serviceFeePaid: !!paymentProofUrl,
         paymentProofUrl,
-        preferredDriverId: window._preferredDriverId || null
+        preferredDriverId: window._preferredDriverId || null,
+        serviceType: window._selectedServiceId || "ride",
+        pickupNote: ($("pickupNoteInput")?.value || "").trim(),
+        itemNote: ($("itemNoteInput")?.value || "").trim()
       },
       lastQuote
     );
     window._preferredDriverId = null;
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
-      showStep("stepSearch");
+      showStep($("stepHome") ? "stepHome" : "stepSearch");
       toast("Order dikirim! Menunggu driver.", "success");
       $("destInput").value = "";
       lastQuote = null;
@@ -907,8 +968,55 @@ async function onFindDriver() {
   }
 }
 
+
+async function renderDriverServices() {
+  const box = $("driverServicesBox");
+  if (!box || typeof TRBIKE_SERVICES === "undefined" || !currentProfile) return;
+  let enabled = DEFAULT_DRIVER_SERVICES.slice();
+  try {
+    const d = await getDriverProfile(currentProfile.uid);
+    if (d?.enabledServices && Array.isArray(d.enabledServices) && d.enabledServices.length) {
+      enabled = d.enabledServices;
+    }
+  } catch (_) {}
+  window._driverEnabledServices = enabled;
+  box.innerHTML = TRBIKE_SERVICES.map((s) => {
+    const on = enabled.includes(s.id);
+    return `<label class="svc-check">
+      <input type="checkbox" data-svc="${s.id}" ${on ? "checked" : ""}>
+      <span class="svc-check-icon">${s.icon}</span>
+      <span><strong>${s.name}</strong><br><small>${s.short}</small></span>
+    </label>`;
+  }).join("");
+  box.querySelectorAll("input[data-svc]").forEach((inp) => {
+    inp.onchange = async () => {
+      const ids = [...box.querySelectorAll("input[data-svc]:checked")].map((i) => i.dataset.svc);
+      if (!ids.length) {
+        inp.checked = true;
+        return toast("Minimal 1 layanan aktif", "error");
+      }
+      window._driverEnabledServices = ids;
+      try {
+        await db.ref("drivers/" + currentProfile.uid).update({
+          enabledServices: ids,
+          services: ids.map((id) => getServiceById(id).short).join(" · "),
+          updatedAt: Date.now()
+        });
+        toast("Layanan disimpan", "success");
+        // refresh presence label
+        if (typeof window._setPresenceStatus === "function") {
+          window._setPresenceStatus(window._presenceStatus || "logged_in");
+        }
+      } catch (e) {
+        toast(e.message || "Gagal simpan", "error");
+      }
+    };
+  });
+}
+
 function setupDriver() {
   loadDriverDashboard();
+  renderDriverServices();
   const dPrefs = async () => {
     const d = await getDriverProfile(currentProfile.uid);
     if ($("driverPrefVerifiedPax")) {
@@ -1370,6 +1478,7 @@ async function initApp() {
   $("checkFareBtn").onclick = onCheckFare;
   $("findDriverBtn").onclick = onFindDriver;
   $("backToSearchBtn").onclick = () => showStep("stepSearch");
+  $("backToHomeBtn")?.addEventListener("click", () => { renderServiceGrid(); showStep("stepHome"); });
   $("backToPinsBtn").onclick = () => showStep("stepPins");
   $("cancelSearchBtn").onclick = () => {
     clearTimeout(searchTimeout);
@@ -1422,7 +1531,7 @@ async function initApp() {
       showStep("stepSearching");
       clearTimeout(searchTimeout);
       searchTimeout = setTimeout(() => {
-        showStep("stepSearch");
+        showStep($("stepHome") ? "stepHome" : "stepSearch");
         toast("Order dikirim ulang", "success");
       }, 2000);
     } catch (err) {
