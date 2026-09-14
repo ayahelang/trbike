@@ -32,9 +32,13 @@ function toast(msg, type = "info") {
 
 function setLoading(btn, loading) {
   if (!btn) return;
-  btn.disabled = loading;
-  btn.dataset.originalText = btn.dataset.originalText || btn.textContent;
-  btn.textContent = loading ? "Memproses..." : btn.dataset.originalText;
+  btn.disabled = !!loading;
+  if (loading) {
+    if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
+    btn.innerHTML = "Memproses...";
+  } else if (btn.dataset.originalHtml) {
+    btn.innerHTML = btn.dataset.originalHtml;
+  }
 }
 
 function showStep(id) {
@@ -92,14 +96,20 @@ async function handleRegister(e) {
   try {
     const name = $("regName").value.trim();
     if (name.length < 2) throw new Error("Nama terlalu pendek");
+    const roleVal = $("regRole").value;
     await registerUser(
       name,
       $("regEmail").value.trim(),
       $("regPassword").value,
-      $("regRole").value,
+      roleVal,
       $("regGender")?.value || ""
     );
-    toast("Akun berhasil dibuat", "success");
+    // Pastikan UI pakai role yang baru saja ditulis
+    await renderApp();
+    toast(
+      roleVal === "driver" ? "Akun Driver berhasil dibuat" : "Akun Penumpang berhasil dibuat",
+      "success"
+    );
     closeAuth();
   } catch (err) {
     $("authMsg").textContent = mapAuthError(err);
@@ -113,8 +123,13 @@ async function handleGoogleLogin() {
   setLoading(btn, true);
   $("authMsg").textContent = "";
   try {
-    await loginWithGoogle($("googleRole")?.value || "passenger");
-    toast("Berhasil masuk dengan Google", "success");
+    const gRole = $("googleRole")?.value || "passenger";
+    await loginWithGoogle(gRole);
+    await renderApp();
+    toast(
+      gRole === "driver" ? "Masuk sebagai Driver (Google)" : "Berhasil masuk dengan Google",
+      "success"
+    );
     closeAuth();
   } catch (err) {
     $("authMsg").textContent = mapAuthError(err);
@@ -153,7 +168,18 @@ async function renderApp() {
   }
 
   show($("authOpenBtn"), false);
+  const outBtn2 = $("logoutBtn");
+  if (outBtn2) {
+    outBtn2.classList.remove("hidden");
+    outBtn2.style.removeProperty("display");
+  }
   show($("logoutBtn"), true);
+  const chipOn = $("userChip");
+  if (chipOn) {
+    chipOn.classList.remove("hidden");
+    chipOn.style.removeProperty("display");
+    chipOn.removeAttribute("aria-hidden");
+  }
   show($("userChip"), true);
   updateUserChip(currentProfile);
 
@@ -184,22 +210,30 @@ async function renderApp() {
 }
 
 async function performLogout() {
-  try {
-    if (currentProfile?.uid) {
-      await markPresenceGhost(currentProfile.uid);
-      if (currentProfile.role === "driver") {
-        try { await setDriverOnline(currentProfile.uid, false); } catch (_) {}
-      }
-    }
-  } catch (_) {}
+  const snap = currentProfile;
+  // UI dulu — jangan tunggu network presence/signOut
+  applyLoggedOutUI();
   stopPresenceHeartbeat();
   if (typeof stopPresenceListener === "function") stopPresenceListener();
   if (typeof stopLiveTracking === "function") stopLiveTracking();
-  if (unsubRides) { try { unsubRides(); } catch (_) {} unsubRides = null; }
-  if (unsubActive) { try { unsubActive(); } catch (_) {} unsubActive = null; }
-  if (unsubFeedback) { try { unsubFeedback(); } catch (_) {} unsubFeedback = null; }
-  if (window._unsubDriverHist) { try { window._unsubDriverHist(); } catch (_) {} window._unsubDriverHist = null; }
-  await logoutUser();
+
+  // background cleanup (jangan block UI)
+  const uid = snap?.uid;
+  const role = snap?.role;
+  Promise.resolve().then(async () => {
+    try {
+      if (uid) await markPresenceGhost(uid);
+    } catch (_) {}
+    try {
+      if (uid && role === "driver") await setDriverOnline(uid, false);
+    } catch (_) {}
+  });
+
+  try {
+    await logoutUser();
+  } catch (e) {
+    console.warn(e);
+  }
   applyLoggedOutUI();
 }
 
@@ -216,6 +250,45 @@ function applyLoggedOutUI() {
   if (window._unsubDriverHist) { try { window._unsubDriverHist(); } catch (_) {} window._unsubDriverHist = null; }
 
   document.body.classList.remove("role-passenger", "role-driver", "role-admin");
+
+  // Bersihkan + sembunyikan chip (inline style agar pasti hilang meski CSS cache)
+  const chip = $("userChip");
+  if (chip) {
+    chip.classList.add("hidden");
+    chip.classList.remove("role-passenger", "role-driver", "role-admin");
+    chip.style.setProperty("display", "none", "important");
+    chip.setAttribute("aria-hidden", "true");
+  }
+  const nameEl = $("userChipName");
+  if (nameEl) {
+    nameEl.textContent = "";
+    nameEl.removeAttribute("title");
+    delete nameEl.dataset.fullName;
+  }
+  const meta = $("userChipMeta");
+  if (meta) {
+    meta.textContent = "";
+    meta.innerHTML = "";
+    meta.className = "chip-meta";
+  }
+  const av = $("userAvatar");
+  if (av) {
+    av.textContent = "";
+    av.style.backgroundImage = "";
+    av.className = "user-avatar";
+    av.removeAttribute("title");
+  }
+
+  const authBtn = $("authOpenBtn");
+  if (authBtn) {
+    authBtn.classList.remove("hidden");
+    authBtn.style.removeProperty("display");
+  }
+  const outBtn = $("logoutBtn");
+  if (outBtn) {
+    outBtn.classList.add("hidden");
+    outBtn.style.setProperty("display", "none", "important");
+  }
   show($("authOpenBtn"), true);
   show($("logoutBtn"), false);
   show($("userChip"), false);
@@ -225,6 +298,8 @@ function applyLoggedOutUI() {
   if ($("ordersPassenger")) $("ordersPassenger").innerHTML = "";
   if ($("driverOrders")) $("driverOrders").innerHTML = "";
   if ($("driverActive")) $("driverActive").innerHTML = "";
+  if ($("driverHistory")) $("driverHistory").innerHTML = "";
+  if ($("driverFeedback")) $("driverFeedback").innerHTML = "";
   show($("stepOrders"), false);
   closeOrderDetail();
   closeProfile();
@@ -232,6 +307,7 @@ function applyLoggedOutUI() {
     $("onlineStatus").textContent = "OFFLINE";
     $("onlineStatus").className = "badge offline";
   }
+  if ($("toggleOnline")) $("toggleOnline").textContent = "Go Online";
 }
 
 let presenceHeartTimer = null;
@@ -889,6 +965,12 @@ function renderProfile() {
     ? '<span class="badge status-requested">Menunggu review</span>'
     : '<span class="badge muted">Belum verifikasi</span>';
 
+  const switchHtml =
+    role !== "driver"
+      ? `<button type="button" id="switchDriverBtn" class="primary" style="width:100%;margin-top:10px">Ubah peran jadi Driver</button>
+         <p class="hint-text" style="margin-top:6px">Akun ini saat ini Penumpang. Klik untuk aktifkan mode Driver / Mitra.</p>`
+      : `<p class="hint-text" style="margin-top:8px">Anda login sebagai <strong>Driver</strong>. Gunakan panel driver di bawah peta.</p>`;
+
   $("profileBody").innerHTML = `
     <div style="text-align:center;margin-bottom:12px">
       <div class="${avClass}" ${avStyle}>${avText}</div>
@@ -899,9 +981,27 @@ function renderProfile() {
       <div><span class="k">Peran</span>${roleHtml}</div>
       <div><span class="k">Status identitas</span>${verHtml}</div>
       <div><span class="k">Email / akun</span>${escapeHtml(p.email || p.phone || "—")}</div>
-    </div>`;
+    </div>
+    ${switchHtml}`;
   if ($("profileGender")) $("profileGender").value = p.gender || "";
   $("profileMsg").textContent = "";
+
+  const sw = $("switchDriverBtn");
+  if (sw) {
+    sw.onclick = async () => {
+      try {
+        sw.disabled = true;
+        await switchToDriverRole(currentProfile.uid);
+        currentProfile = await getCurrentUserProfile();
+        toast("Peran diubah menjadi Driver", "success");
+        closeProfile();
+        await renderApp();
+      } catch (err) {
+        $("profileMsg").textContent = err.message || "Gagal ubah peran";
+        sw.disabled = false;
+      }
+    };
+  }
 }
 
 function statusLabel(s) {
@@ -1222,12 +1322,12 @@ async function initApp() {
     const btn = $("deleteAccountBtn");
     try {
       if (btn) btn.disabled = true;
+      closeProfile();
+      applyLoggedOutUI(); // langsung hilangkan chip
       await deleteMyAccount();
       applyLoggedOutUI();
-      closeProfile();
       toast("Akun dihapus", "success");
     } catch (err) {
-      $("profileMsg").textContent = err.message || "Gagal hapus akun";
       toast(err.message || "Gagal hapus akun", "error");
       applyLoggedOutUI();
     } finally {

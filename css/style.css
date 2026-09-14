@@ -434,6 +434,10 @@ textarea {
   cursor: pointer;
   font: inherit;
 }
+/* Harus menang atas display:inline-flex agar logout benar-benar menyembunyikan chip */
+.user-chip.hidden {
+  display: none !important;
+}
 .user-avatar {
   width: 32px;
   height: 32px;
@@ -578,3 +582,31 @@ body.role-passenger .sheet { border-top: 3px solid #3b82f6; }
 .pax-dot.logged-in { background: #22c55e; } /* hijau */
 .pax-dot.ordering { background: #eab308; } /* kuning */
 .pax-dot.waiting { background: #ef4444; } /* merah */
+
+
+/* logout-chip-force — pastikan chip benar-benar hilang saat .hidden */
+.user-chip.hidden,
+button#userChip.hidden,
+#userChip.hidden {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  border: none !important;
+  opacity: 0 !important;
+}
+#logoutBtn.hidden {
+  display: none !important;
+}
+.btn.google .google-icon {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}

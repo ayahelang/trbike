@@ -2,15 +2,57 @@
  * TRBike — Authentication Module
  */
 
+/** Promise lock agar onAuthStateChanged menunggu profil selesai ditulis saat register */
+let authBootstrapLock = null;
+
 async function ensureUserProfile(user, extra = {}) {
   const uid = user.uid;
   const snap = await db.ref("users/" + uid).once("value");
+  const now = Date.now();
+  const requestedRole = extra.role || "passenger";
+
   if (snap.exists()) {
-    return { uid, ...snap.val() };
+    const existing = snap.val() || {};
+    const updates = { updatedAt: now };
+
+    // Force role saat register baru / upgrade eksplisit ke driver
+    if (extra.forceRole && requestedRole) {
+      updates.role = requestedRole;
+    }
+    if (extra.fullName && String(extra.fullName).trim().length >= 2) {
+      updates.fullName = String(extra.fullName).trim();
+    }
+    if (extra.gender) updates.gender = extra.gender;
+
+    // Pastikan node drivers ada jika role driver
+    const finalRole = updates.role || existing.role || "passenger";
+    if (finalRole === "driver") {
+      const dSnap = await db.ref("drivers/" + uid).once("value");
+      if (!dSnap.exists()) {
+        await db.ref("drivers/" + uid).set({
+          isOnline: false,
+          walletBalance: 0,
+          totalEarnings: 0,
+          totalRides: 0,
+          rating: 5.0,
+          ratingCount: 0,
+          prefs: {
+            verifiedPassengersOnly: false,
+            womenPassengersOnly: false
+          },
+          createdAt: now
+        });
+      }
+    }
+
+    if (Object.keys(updates).length > 1 || updates.role) {
+      await db.ref("users/" + uid).update(updates);
+    }
+    const fresh = await db.ref("users/" + uid).once("value");
+    return { uid, ...fresh.val() };
   }
 
-  const now = Date.now();
-  const role = extra.role || "passenger";
+  const role = requestedRole || "passenger";
   const fullName =
     extra.fullName ||
     user.displayName ||
@@ -22,7 +64,7 @@ async function ensureUserProfile(user, extra = {}) {
     role,
     gender: extra.gender || "",
     identityVerified: false,
-    verificationStatus: "none", // none | pending | approved | rejected
+    verificationStatus: "none",
     prefs: {
       verifiedDriversOnly: true,
       sameGenderOnly: false
@@ -54,14 +96,27 @@ async function ensureUserProfile(user, extra = {}) {
 }
 
 async function registerUser(fullName, email, password, role, gender) {
-  const cred = await auth.createUserWithEmailAndPassword(email, password);
-  await ensureUserProfile(cred.user, {
-    fullName,
-    role,
-    gender: gender || "",
-    provider: "email"
-  });
-  return cred.user;
+  const chosenRole = role === "driver" ? "driver" : "passenger";
+  authBootstrapLock = (async () => {
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
+    // Tulis profil SEBELUM renderApp dari onAuthStateChanged
+    await ensureUserProfile(cred.user, {
+      fullName,
+      role: chosenRole,
+      gender: gender || "",
+      provider: "email",
+      forceRole: true
+    });
+    return cred.user;
+  })();
+  try {
+    return await authBootstrapLock;
+  } finally {
+    // beri sedikit waktu listener yang sudah menunggu
+    setTimeout(() => {
+      authBootstrapLock = null;
+    }, 0);
+  }
 }
 
 async function loginUser(email, password) {
@@ -70,15 +125,37 @@ async function loginUser(email, password) {
 }
 
 async function loginWithGoogle(role = "passenger") {
+  const chosenRole = role === "driver" ? "driver" : "passenger";
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  const result = await auth.signInWithPopup(provider);
-  const user = result.user;
-  const snap = await db.ref("users/" + user.uid).once("value");
-  if (!snap.exists()) {
-    await ensureUserProfile(user, { role: role || "passenger", provider: "google" });
+
+  authBootstrapLock = (async () => {
+    const result = await auth.signInWithPopup(provider);
+    const user = result.user;
+    const snap = await db.ref("users/" + user.uid).once("value");
+    if (!snap.exists()) {
+      await ensureUserProfile(user, {
+        role: chosenRole,
+        provider: "google",
+        forceRole: true
+      });
+    } else if (chosenRole === "driver" && snap.val().role !== "driver") {
+      // Upgrade ke driver jika user pilih driver di form Google
+      await ensureUserProfile(user, {
+        role: "driver",
+        provider: "google",
+        forceRole: true
+      });
+    }
+    return user;
+  })();
+  try {
+    return await authBootstrapLock;
+  } finally {
+    setTimeout(() => {
+      authBootstrapLock = null;
+    }, 0);
   }
-  return user;
 }
 
 async function logoutUser() {
@@ -86,10 +163,25 @@ async function logoutUser() {
 }
 
 async function getCurrentUserProfile() {
+  // Tunggu register/login Google selesai menulis role yang benar
+  if (authBootstrapLock) {
+    try {
+      await authBootstrapLock;
+    } catch (_) {}
+  }
   const user = auth.currentUser;
   if (!user) return null;
   const snap = await db.ref("users/" + user.uid).once("value");
   if (!snap.exists()) {
+    // Jangan default passenger di sini jika sedang bootstrap
+    if (authBootstrapLock) {
+      try {
+        await authBootstrapLock;
+      } catch (_) {}
+      const again = await db.ref("users/" + user.uid).once("value");
+      if (again.exists()) return { uid: user.uid, ...again.val() };
+    }
+    // Fallback terakhir — tanpa force role passenger agresif jika extra tidak ada
     return await ensureUserProfile(user, { role: "passenger", provider: "google" });
   }
   return { uid: user.uid, ...snap.val() };
@@ -97,6 +189,25 @@ async function getCurrentUserProfile() {
 
 async function updateUserProfile(uid, patch) {
   await db.ref("users/" + uid).update({ ...patch, updatedAt: Date.now() });
+  // Jika ganti role ke driver, pastikan node drivers
+  if (patch.role === "driver") {
+    const dSnap = await db.ref("drivers/" + uid).once("value");
+    if (!dSnap.exists()) {
+      await db.ref("drivers/" + uid).set({
+        isOnline: false,
+        walletBalance: 0,
+        totalEarnings: 0,
+        totalRides: 0,
+        rating: 5.0,
+        ratingCount: 0,
+        prefs: {
+          verifiedPassengersOnly: false,
+          womenPassengersOnly: false
+        },
+        createdAt: Date.now()
+      });
+    }
+  }
 }
 
 /** Upload KYC images to Storage (fallback: skip if storage null) */
@@ -118,7 +229,7 @@ async function submitKyc(uid, { selfieUrl, ktpUrl }) {
     },
     updatedAt: Date.now()
   });
-  // MVP: auto-approve untuk demo skripsi (bisa diganti admin manual)
+  // MVP: auto-approve untuk demo skripsi
   await db.ref("users/" + uid).update({
     identityVerified: true,
     verificationStatus: "approved",
@@ -127,9 +238,15 @@ async function submitKyc(uid, { selfieUrl, ktpUrl }) {
 }
 
 function onAuthStateChanged(callback) {
-  return auth.onAuthStateChanged(callback);
+  return auth.onAuthStateChanged(async (user) => {
+    if (authBootstrapLock) {
+      try {
+        await authBootstrapLock;
+      } catch (_) {}
+    }
+    return callback(user);
+  });
 }
-
 
 /** Hapus data akun sendiri + coba hapus Auth user */
 async function deleteMyAccount() {
@@ -150,7 +267,6 @@ async function deleteMyAccount() {
   try {
     await user.delete();
   } catch (e) {
-    // Butuh login ulang baru-baru ini
     const code = e.code || "";
     if (code.includes("requires-recent-login")) {
       await auth.signOut();
@@ -161,4 +277,9 @@ async function deleteMyAccount() {
     await auth.signOut();
     throw e;
   }
+}
+
+/** Upgrade / ganti peran ke driver */
+async function switchToDriverRole(uid) {
+  await updateUserProfile(uid, { role: "driver" });
 }
