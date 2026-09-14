@@ -348,14 +348,14 @@ async function onCheckFare() {
       <div class="price">${formatRupiah(lastQuote.total)}</div>
       <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km
         · BBM ${fuelLabel} Rp${lastQuote.fuelPerKm}/km</div>
-      <div class="row"><span>BBM penjemputan</span><span>Rp${lastQuote.fuelPerKm} × ${pickupKm} km = ${formatRupiah(lastQuote.pickupFuel)}</span></div>
-      <div class="row"><span>BBM ke tujuan</span><span>Rp${lastQuote.fuelPerKm} × ${tripKm} km = ${formatRupiah(lastQuote.tripFuel)}</span></div>
-      <div class="row"><span>Perawatan kendaraan</span><span>10% × total BBM = ${formatRupiah(lastQuote.perawatan)}</span></div>
-      <div class="row"><span>Makan &amp; kesehatan</span><span>13% × total BBM = ${formatRupiah(lastQuote.makanKesehatan)}</span></div>
-      <div class="row"><span>Jasa driver</span><span>77% × total BBM = ${formatRupiah(lastQuote.jasaDriver)}</span></div>
-      <div class="row"><span>Biaya layanan</span><span>10% × total BBM = ${formatRupiah(lastQuote.serviceFee)}</span></div>
+      <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
+      <div class="row"><span>BBM ke tujuan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
+      <div class="row"><span>Perawatan kendaraan</span><span>${formatRupiah(lastQuote.perawatan)}</span></div>
+      <div class="row"><span>Makan &amp; kesehatan</span><span>${formatRupiah(lastQuote.makanKesehatan)}</span></div>
+      <div class="row"><span>Jasa driver</span><span>${formatRupiah(lastQuote.jasaDriver)}</span></div>
+      <div class="row"><span>Biaya layanan</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
       <div class="row"><span>Tarif sebelum PPN</span><span>${formatRupiah(lastQuote.beforePpn)}</span></div>
-      <div class="row"><span>PPN</span><span>11% × tarif sebelum PPN = ${formatRupiah(lastQuote.tax)}</span></div>
+      <div class="row"><span>PPN</span><span>${formatRupiah(lastQuote.tax)}</span></div>
       <div class="row total"><span>Total dibayar pelanggan</span><span>${formatRupiah(lastQuote.total)}</span></div>
       <div class="meta" style="margin-top:8px;font-size:0.85em;opacity:0.85">Cash: transfer <strong>${formatRupiah(lastQuote.payToPlatform)}</strong> (biaya layanan + PPN) ke TRBike; sisanya cash ke driver.</div>`;
     const feeHint = $("serviceFeeHint");
