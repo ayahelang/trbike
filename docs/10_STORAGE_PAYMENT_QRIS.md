@@ -44,14 +44,14 @@ service firebase.storage {
 
 Alur MVP:
 1. Penumpang pilih **Cash di tujuan**
-2. Transfer **biaya layanan** ke:
+2. Transfer **biaya layanan + PPN** ke:
    - **Dana** 085159922358  
    - **Gopay** 085158822803  
 3. Upload **bukti transfer** (dikompres)  
 4. Baru bisa **Cari Driver**  
 5. Sisa tarif dibayar cash ke driver di tujuan  
 
-`serviceFee` dari algoritma tarif = komponen yang idealnya dilunasi dulu ke TRBike.
+`serviceFee + tax (PPN)` dari algoritma tarif = komponen yang dilunasi dulu ke TRBike. Sisanya cash ke driver.
 
 ---
 
@@ -88,7 +88,7 @@ Ya, dengan **Midtrans / Xendit / DOKU**:
 Ini **bukan** fitur bawaan Firebase gratis.
 
 ### Simulasi escrow di TRBike (gratis / MVP)
-1. Penumpang bayar **biaya layanan** dulu (bukti upload)  
+1. Penumpang bayar **biaya layanan + PPN** dulu (bukti upload)  
 2. Tarif utama: **cash ke driver** setelah sampai  
 3. Atau: penumpang TF full ke Dana/Gopay TRBike, admin **manual** cairkan ke driver setelah cek status `completed`  
 

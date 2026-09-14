@@ -34,7 +34,7 @@ fareRules
         ├── fuelPricePerLiter: 12500
         ├── fuelEfficiencyKmPerLiter: 40
         ├── baseFare: 2500
-        ├── serviceFeePercent: 0.17
+        ├── serviceFeePercent: 0.1
         ├── taxPercent: 0.11
         ├── pools
         │     ├── maintenance: 0.10

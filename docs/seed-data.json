@@ -6,9 +6,9 @@
       "perawatanPercent": 0.10,
       "makanKesehatanPercent": 0.13,
       "jasaDriverPercent": 0.77,
-      "serviceFeePercent": 0.17,
+      "serviceFeePercent": 0.10,
       "taxPercent": 0.11,
-      "version": "2.2.0-bbm700-offpeak550"
+      "version": "2.3.0-bbm700-offpeak550-svc10"
     }
   }
 }

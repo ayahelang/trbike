@@ -1,8 +1,8 @@
 /**
- * TRBike Fare v2.2
- * BBM peak/default: Rp 700/km (pp + balik)
- * BBM off-peak: Rp 550/km (08–11 & 13–16)
- * Detail rumus internal — jangan diekspos panjang di UI penumpang
+ * TRBike Fare v2.3
+ * BBM peak/default: Rp 700/km
+ * BBM off-peak: Rp 550/km (09:00–11:00 & 14:00–16:00)
+ * Rincian tarif ditampilkan ke pelanggan sesuai skema komponen.
  */
 
 const DEFAULT_FARE_RULES = {
@@ -11,18 +11,18 @@ const DEFAULT_FARE_RULES = {
   perawatanPercent: 0.1,
   makanKesehatanPercent: 0.13,
   jasaDriverPercent: 0.77,
-  serviceFeePercent: 0.17,
+  serviceFeePercent: 0.1,
   taxPercent: 0.11,
   classMultipliers: { standard: 1, comfort: 1.1, premium: 1.2 },
-  version: "2.2.0-bbm700-offpeak550"
+  version: "2.3.0-bbm700-offpeak550-svc10"
 };
 
-/** Off-peak: 08:00–11:00 dan 13:00–16:00 (waktu lokal) */
+/** Off-peak: 09:00–11:00 dan 14:00–16:00 (waktu lokal) */
 function isOffPeakHour(date = new Date()) {
   const h = date.getHours();
   const m = date.getMinutes();
   const t = h + m / 60;
-  return (t >= 8 && t < 11) || (t >= 13 && t < 16);
+  return (t >= 9 && t < 11) || (t >= 14 && t < 16);
 }
 
 function getFuelPerKm(rules = DEFAULT_FARE_RULES, date = new Date()) {
@@ -45,13 +45,21 @@ function calculateFare(tripKm, pickupKm, serviceClass = "standard", rules = DEFA
   const perawatan = totalBBM * (rules.perawatanPercent ?? 0.1);
   const makanKesehatan = totalBBM * (rules.makanKesehatanPercent ?? 0.13);
   const jasaDriver = totalBBM * (rules.jasaDriverPercent ?? 0.77);
-  const pendapatanBersih = perawatan + makanKesehatan + jasaDriver;
+  const pendapatanBersih = perawatan + makanKesehatan + jasaDriver; // = 100% totalBBM
 
-  const serviceFee = totalBBM * (rules.serviceFeePercent ?? 0.17);
+  const serviceFee = totalBBM * (rules.serviceFeePercent ?? 0.1);
+  // Tarif sebelum PPN = BBM + perawatan + makan + jasa + biaya layanan
   const beforePpn = totalBBM + perawatan + makanKesehatan + jasaDriver + serviceFee;
   const tax = beforePpn * (rules.taxPercent ?? 0.11);
-  const total = Math.ceil((beforePpn + tax) / 500) * 500;
+  const rawTotal = beforePpn + tax;
+  // Pembulatan ke atas kelipatan 500 (kebiasaan ojol)
+  const total = Math.ceil(rawTotal / 500) * 500;
   const round = (n) => Math.round(n);
+
+  // Yang dibayar ke rekening TRBike (cash / escrow): Biaya layanan + PPN
+  const payToPlatform = round(serviceFee + tax);
+  // Sisa (BBM + perawatan + makan + jasa) dibayar cash ke driver / ditransfer ke driver
+  const payToDriver = round(pendapatanBersih + totalBBM);
 
   return {
     total: round(total),
@@ -67,6 +75,8 @@ function calculateFare(tripKm, pickupKm, serviceClass = "standard", rules = DEFA
     beforePpn: round(beforePpn),
     driverGross: round(pendapatanBersih),
     driverPool: round(pendapatanBersih),
+    payToPlatform, // Biaya layanan + PPN → rekening TRBike
+    payToDriver,   // Sisa → driver (cash atau TF dari escrow)
     fuelPerKm,
     offPeak,
     classMultiplier: mult,
@@ -77,9 +87,16 @@ function calculateFare(tripKm, pickupKm, serviceClass = "standard", rules = DEFA
     breakdown: {
       tripFuel: round(tripFuel * mult),
       pickupFuel: round(pickupFuel * mult),
+      totalBBM: round(totalBBM),
+      perawatan: round(perawatan),
+      makanKesehatan: round(makanKesehatan),
+      jasaDriver: round(jasaDriver),
       serviceFee: round(serviceFee),
+      beforePpn: round(beforePpn),
       tax: round(tax),
-      total: round(total)
+      total: round(total),
+      payToPlatform,
+      payToDriver
     }
   };
 }

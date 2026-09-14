@@ -268,9 +268,16 @@ function openOrderDetail(rideId) {
       <div><span class="k">Jarak trip</span><span>${r.tripDistanceKm || 0} km</span></div>
       <div><span class="k">Jarak jemput</span><span>${r.pickupDistanceKm || 0} km</span></div>
       <div><span class="k">ETA</span><span>${eta}</span></div>
-      <div><span class="k">Tarif</span><span><strong>${formatRupiah(r.fare?.total || 0)}</strong></span></div>
+      <div><span class="k">Tarif total</span><span><strong>${formatRupiah(r.fare?.total || 0)}</strong></span></div>
+      <div><span class="k">BBM penjemputan</span><span>${formatRupiah(r.fare?.pickupFuel || 0)}</span></div>
+      <div><span class="k">BBM ke tujuan</span><span>${formatRupiah(r.fare?.tripFuel || 0)}</span></div>
+      <div><span class="k">Perawatan kendaraan</span><span>${formatRupiah(r.fare?.perawatan || 0)}</span></div>
+      <div><span class="k">Makan &amp; kesehatan</span><span>${formatRupiah(r.fare?.makanKesehatan || 0)}</span></div>
+      <div><span class="k">Jasa driver</span><span>${formatRupiah(r.fare?.jasaDriver || 0)}</span></div>
       <div><span class="k">Biaya layanan</span><span>${formatRupiah(r.fare?.serviceFee || 0)}</span></div>
-      
+      <div><span class="k">Tarif sebelum PPN</span><span>${formatRupiah(r.fare?.beforePpn || 0)}</span></div>
+      <div><span class="k">PPN</span><span>${formatRupiah(r.fare?.tax || 0)}</span></div>
+      <div><span class="k">Bayar ke TRBike (layanan+PPN)</span><span>${formatRupiah((r.fare?.serviceFee || 0) + (r.fare?.tax || 0))}</span></div>
       ${r.tip ? `<div><span class="k">Tips</span><span>${formatRupiah(r.tip)}</span></div>` : ""}
     </div>`;
 
@@ -336,21 +343,27 @@ async function onCheckFare() {
     const pickupKm = +(0.5 + Math.random() * 1.5).toFixed(1);
     const rules = await getFareRules();
     lastQuote = calculateFare(tripKm, pickupKm, "standard", rules);
+    const fuelLabel = lastQuote.offPeak ? "luang" : "sibuk";
     $("quoteCard").innerHTML = `
       <div class="price">${formatRupiah(lastQuote.total)}</div>
       <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km
-        · BBM ${lastQuote.offPeak ? "luang" : "sibuk"} Rp${lastQuote.fuelPerKm}/km</div>
-      <div class="row"><span>BBM perjalanan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
-      <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
-      <div class="row"><span>Biaya layanan</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
-      <div class="row"><span>PPN</span><span>${formatRupiah(lastQuote.tax)}</span></div>
-      <div class="row total"><span>Total</span><span>${formatRupiah(lastQuote.total)}</span></div>`;
+        · BBM ${fuelLabel} Rp${lastQuote.fuelPerKm}/km</div>
+      <div class="row"><span>BBM penjemputan</span><span>Rp${lastQuote.fuelPerKm} × ${pickupKm} km = ${formatRupiah(lastQuote.pickupFuel)}</span></div>
+      <div class="row"><span>BBM ke tujuan</span><span>Rp${lastQuote.fuelPerKm} × ${tripKm} km = ${formatRupiah(lastQuote.tripFuel)}</span></div>
+      <div class="row"><span>Perawatan kendaraan</span><span>10% × total BBM = ${formatRupiah(lastQuote.perawatan)}</span></div>
+      <div class="row"><span>Makan &amp; kesehatan</span><span>13% × total BBM = ${formatRupiah(lastQuote.makanKesehatan)}</span></div>
+      <div class="row"><span>Jasa driver</span><span>77% × total BBM = ${formatRupiah(lastQuote.jasaDriver)}</span></div>
+      <div class="row"><span>Biaya layanan</span><span>10% × total BBM = ${formatRupiah(lastQuote.serviceFee)}</span></div>
+      <div class="row"><span>Tarif sebelum PPN</span><span>${formatRupiah(lastQuote.beforePpn)}</span></div>
+      <div class="row"><span>PPN</span><span>11% × tarif sebelum PPN = ${formatRupiah(lastQuote.tax)}</span></div>
+      <div class="row total"><span>Total dibayar pelanggan</span><span>${formatRupiah(lastQuote.total)}</span></div>
+      <div class="meta" style="margin-top:8px;font-size:0.85em;opacity:0.85">Cash: transfer <strong>${formatRupiah(lastQuote.payToPlatform)}</strong> (biaya layanan + PPN) ke TRBike; sisanya cash ke driver.</div>`;
     const feeHint = $("serviceFeeHint");
     if (feeHint) {
       feeHint.innerHTML =
-        "Transfer/QRIS <strong>biaya layanan " +
-        formatRupiah(lastQuote.serviceFee) +
-        "</strong> ke Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong> (atau scan QRIS).";
+        "Transfer/QRIS <strong>biaya layanan + PPN " +
+        formatRupiah(lastQuote.payToPlatform) +
+        "</strong> ke Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong> (atau scan QRIS). Sisanya dibayar cash ke driver di tujuan.";
     }
     showStep("stepQuote");
   } catch (err) {
@@ -381,14 +394,14 @@ async function onFindDriver() {
     });
   } catch (_) {}
 
-  // Cash wajib bukti bayar biaya layanan
+  // Cash wajib bukti bayar biaya layanan + PPN
   const payCash = $("payCashCheck")?.checked !== false;
   const payMethod = payCash ? "cash" : "transfer";
   let paymentProofUrl = null;
   if (payCash) {
     if (!feeProofBlob) {
       showStep("stepQuote");
-      return toast("Upload bukti TF/QRIS biaya layanan dulu untuk opsi Cash", "error");
+      return toast("Upload bukti TF/QRIS biaya layanan + PPN dulu untuk opsi Cash", "error");
     }
     try {
       paymentProofUrl = await uploadCompressed(currentProfile.uid, feeProofBlob, "fee_proof");
