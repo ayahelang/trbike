@@ -383,25 +383,180 @@ function startPresenceForUser(profile) {
     );
   }
 
-  // initial
-  push(role === "driver" ? "logged_in" : "logged_in");
+  // Enrich driver presence (rating, layanan, radius)
+  const enrichAndPush = async (status, extra = {}) => {
+    let more = {};
+    if (role === "driver") {
+      try {
+        const d = await getDriverProfile(uid);
+        more = {
+          rating: d?.rating ?? 5,
+          ratingCount: d?.ratingCount ?? 0,
+          services: d?.services || "Antar penumpang · Paket · Makanan · Belanja",
+          coverRadiusKm: d?.coverRadiusKm ?? 10,
+          isOnline: d?.isOnline !== false ? (extra.isOnline !== false) : false
+        };
+      } catch (_) {}
+    }
+    await push(status, { ...more, ...extra });
+  };
+
+  enrichAndPush("logged_in");
 
   presenceHeartTimer = setInterval(() => {
     const st = window._presenceStatus || "logged_in";
-    push(st);
+    enrichAndPush(st);
   }, 20000);
 
   window._setPresenceStatus = (st) => {
     window._presenceStatus = st;
-    push(st);
+    enrichAndPush(st);
   };
   window._presenceStatus = "logged_in";
 
-  // Map listener: lawan peran
   const viewerRole = role === "driver" ? "driver" : "passenger";
+  const viewerVerified = !!profile.identityVerified;
   if (typeof startPresenceListener === "function") {
-    startPresenceListener(uid, viewerRole, () => lastPresenceCoords || (map && map.getCenter()));
+    startPresenceListener(
+      uid,
+      viewerRole,
+      () => lastPresenceCoords || (map && map.getCenter()),
+      {
+        viewerVerified,
+        showOtherDrivers: role === "driver" && viewerVerified,
+        onDriverClick: (driverUid, presenceData, dist) => {
+          openDriverProfileModal(driverUid, presenceData, dist);
+        }
+      }
+    );
   }
+}
+
+
+async function openDriverProfileModal(driverUid, presenceData, dist) {
+  if (!currentProfile) return openAuth();
+  if (!currentProfile.identityVerified) {
+    return toast("Verifikasi identitas dulu untuk melihat profil driver", "error");
+  }
+  window._selectedDriverUid = driverUid;
+  let d = {};
+  let u = {};
+  try {
+    d = (await getDriverProfile(driverUid)) || {};
+  } catch (_) {}
+  try {
+    const snap = await db.ref("users/" + driverUid).once("value");
+    u = snap.val() || {};
+  } catch (_) {}
+
+  const name = u.fullName || presenceData?.fullName || "Driver";
+  const rating = d.rating != null ? Number(d.rating).toFixed(1) : (presenceData?.rating != null ? Number(presenceData.rating).toFixed(1) : "5.0");
+  const ratingCount = d.ratingCount || presenceData?.ratingCount || 0;
+  const services = d.services || presenceData?.services || "Antar penumpang · Paket · Makanan · Belanja";
+  const radius = d.coverRadiusKm || presenceData?.coverRadiusKm || 10;
+  const verified = !!(u.identityVerified || presenceData?.identityVerified);
+  const distTxt = dist != null ? `~${Number(dist).toFixed(1)} km dari Anda` : "";
+
+  const body = $("driverProfileBody");
+  if (!body) return;
+  body.innerHTML = `
+    <div style="text-align:center;margin-bottom:12px">
+      <div class="profile-avatar-lg role-driver ${verified ? "verified" : ""}">🛵</div>
+      <div style="font-weight:800;font-size:1.05rem">${escapeHtml(name)}</div>
+      <div style="margin-top:6px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+        <span class="role-pill driver">Driver</span>
+        ${verified ? '<span class="badge online">✓ Terverifikasi</span>' : '<span class="badge muted">Belum verifikasi</span>'}
+      </div>
+      <div style="margin-top:8px;font-size:1.1rem;font-weight:700">⭐ ${rating} <span class="muted" style="font-size:0.8rem;font-weight:500">(${ratingCount} ulasan)</span></div>
+      ${distTxt ? `<div class="muted" style="font-size:0.8rem;margin-top:4px">${distTxt}</div>` : ""}
+    </div>
+    <div class="detail-grid">
+      <div><span class="k">Layanan</span><span>${escapeHtml(services)}</span></div>
+      <div><span class="k">Radius cover</span><span>± ${radius} km</span></div>
+      <div><span class="k">Order selesai</span><span>${d.totalRides || 0}</span></div>
+    </div>
+    <div class="driver-profile-actions">
+      <label>Titik jemput (opsional, default lokasi Anda)
+        <input id="dpPickupNote" type="text" placeholder="Contoh: Depan Indomaret">
+      </label>
+      <label>Tujuan
+        <input id="dpDestNote" type="text" placeholder="Alamat / nama tempat tujuan">
+      </label>
+      <button type="button" id="dpBookBtn" class="success" style="width:100%">Pesan driver ini</button>
+      <div class="auth-divider"><span>atau</span></div>
+      <label>Tips untuk driver (Rp)
+        <input id="dpTipAmount" type="number" min="0" step="1000" placeholder="Mis. 5000">
+      </label>
+      <button type="button" id="dpTipBtn" class="btn outline" style="width:100%">Kirim tips</button>
+      <p id="dpMsg" class="msg"></p>
+    </div>`;
+
+  show($("driverProfileModal"), true);
+
+  $("dpBookBtn").onclick = async () => {
+    const dest = ($("dpDestNote")?.value || "").trim();
+    if (!dest) {
+      $("dpMsg").textContent = "Isi tujuan dulu";
+      return;
+    }
+    window._preferredDriverId = driverUid;
+    // Isi search + buka flow penumpang
+    if ($("destInput")) $("destInput").value = dest;
+    closeDriverProfileModal();
+    show($("passengerSheet"), true);
+    showStep("stepSearch");
+    toast("Tujuan diisi. Geser pin jemput/tujuan lalu Cek Tarif. Order akan diprioritaskan ke driver ini jika tersedia.", "success");
+    // Coba geocode tujuan sederhana lewat existing search jika ada
+    try {
+      if (typeof bindDestinationSearch === "function") {
+        /* search already bound */
+      }
+    } catch (_) {}
+  };
+
+  $("dpTipBtn").onclick = async () => {
+    const amt = Math.max(0, Math.round(Number($("dpTipAmount")?.value || 0)));
+    if (amt < 1000) {
+      $("dpMsg").textContent = "Minimal tips Rp 1.000";
+      return;
+    }
+    try {
+      await sendDriverTip(driverUid, currentProfile.uid, amt, "Tips langsung dari peta");
+      $("dpMsg").textContent = "";
+      toast("Tips " + formatRupiah(amt) + " tercatat untuk driver", "success");
+      $("dpTipAmount").value = "";
+    } catch (e) {
+      $("dpMsg").textContent = e.message || "Gagal kirim tips";
+    }
+  };
+}
+
+function closeDriverProfileModal() {
+  show($("driverProfileModal"), false);
+  window._selectedDriverUid = null;
+}
+
+/** Tips langsung (tanpa harus selesai order) — masuk wallet driver + log */
+async function sendDriverTip(driverId, fromUid, amount, note) {
+  const amt = Math.max(0, Math.round(Number(amount) || 0));
+  if (amt < 1) throw new Error("Nominal tips tidak valid");
+  const tipRef = db.ref("tips").push();
+  await tipRef.set({
+    driverId,
+    fromUid,
+    amount: amt,
+    note: note || "",
+    createdAt: Date.now(),
+    status: "recorded"
+  });
+  const dRef = db.ref("drivers/" + driverId);
+  const snap = await dRef.once("value");
+  const d = snap.val() || {};
+  await dRef.update({
+    walletBalance: (d.walletBalance || 0) + amt,
+    totalEarnings: (d.totalEarnings || 0) + amt
+  });
+  return true;
 }
 
 function roleLabel(role) {
@@ -627,20 +782,42 @@ async function onCheckFare() {
     const rules = await getFareRules();
     lastQuote = calculateFare(tripKm, pickupKm, "standard", rules);
     const fuelLabel = lastQuote.offPeak ? "luang" : "sibuk";
+    const untukDriver = lastQuote.payToDriver || (
+      (lastQuote.pickupFuel || 0) + (lastQuote.tripFuel || 0) +
+      (lastQuote.perawatan || 0) + (lastQuote.makanKesehatan || 0) + (lastQuote.jasaDriver || 0)
+    );
     $("quoteCard").innerHTML = `
       <div class="price">${formatRupiah(lastQuote.total)}</div>
       <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km
         · BBM ${fuelLabel} Rp${lastQuote.fuelPerKm}/km</div>
-      <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
-      <div class="row"><span>BBM ke tujuan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
-      <div class="row"><span>Perawatan kendaraan</span><span>${formatRupiah(lastQuote.perawatan)}</span></div>
-      <div class="row"><span>Makan &amp; kesehatan</span><span>${formatRupiah(lastQuote.makanKesehatan)}</span></div>
-      <div class="row"><span>Jasa driver</span><span>${formatRupiah(lastQuote.jasaDriver)}</span></div>
+      <button type="button" class="fare-toggle" id="fareDriverToggle" aria-expanded="false">
+        <span class="fare-toggle-label">Untuk Driver</span>
+        <span class="fare-toggle-amt">${formatRupiah(untukDriver)}</span>
+        <span class="fare-toggle-icon" id="fareDriverIcon">+</span>
+      </button>
+      <div id="fareDriverDetail" class="fare-driver-detail hidden">
+        <div class="row indent"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
+        <div class="row indent"><span>BBM ke tujuan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
+        <div class="row indent"><span>Perawatan kendaraan</span><span>${formatRupiah(lastQuote.perawatan)}</span></div>
+        <div class="row indent"><span>Makan &amp; kesehatan</span><span>${formatRupiah(lastQuote.makanKesehatan)}</span></div>
+        <div class="row indent"><span>Jasa driver</span><span>${formatRupiah(lastQuote.jasaDriver)}</span></div>
+      </div>
       <div class="row"><span>Biaya layanan</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
       <div class="row"><span>Tarif sebelum PPN</span><span>${formatRupiah(lastQuote.beforePpn)}</span></div>
       <div class="row"><span>PPN</span><span>${formatRupiah(lastQuote.tax)}</span></div>
       <div class="row total"><span>Total dibayar pelanggan</span><span>${formatRupiah(lastQuote.total)}</span></div>
       <div class="meta" style="margin-top:8px;font-size:0.85em;opacity:0.85">Cash: transfer <strong>${formatRupiah(lastQuote.payToPlatform)}</strong> (biaya layanan + PPN) ke TRBike; sisanya cash ke driver.</div>`;
+    const tog = $("fareDriverToggle");
+    if (tog) {
+      tog.onclick = () => {
+        const det = $("fareDriverDetail");
+        const ic = $("fareDriverIcon");
+        const open = det && !det.classList.contains("hidden");
+        if (det) det.classList.toggle("hidden", open);
+        if (ic) ic.textContent = open ? "+" : "−";
+        tog.setAttribute("aria-expanded", open ? "false" : "true");
+      };
+    }
     const feeHint = $("serviceFeeHint");
     if (feeHint) {
       feeHint.innerHTML =
@@ -711,10 +888,12 @@ async function onFindDriver() {
         prefs,
         paymentMethod: payMethod,
         serviceFeePaid: !!paymentProofUrl,
-        paymentProofUrl
+        paymentProofUrl,
+        preferredDriverId: window._preferredDriverId || null
       },
       lastQuote
     );
+    window._preferredDriverId = null;
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
       showStep("stepSearch");
@@ -1166,6 +1345,10 @@ async function initApp() {
   $("authCloseBtn").onclick = closeAuth;
   if ($("userChip")) $("userChip").onclick = openProfile;
   $("profileClose").onclick = closeProfile;
+  $("driverProfileClose")?.addEventListener("click", closeDriverProfileModal);
+  $("driverProfileModal")?.addEventListener("click", (e) => {
+    if (e.target === $("driverProfileModal")) closeDriverProfileModal();
+  });
   $("authModal").addEventListener("click", (e) => {
     if (e.target === $("authModal")) closeAuth();
   });

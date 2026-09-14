@@ -368,11 +368,15 @@ function stopPresenceListener() {
 
 /**
  * Dengarkan presence terdekat.
- * viewerRole: "driver" → lihat penumpang; "passenger" → lihat driver
+ * opts: { viewerRole, viewerVerified, onDriverClick, showSelf, showOtherDrivers }
  */
-function startPresenceListener(myUid, viewerRole, centerGetter) {
+function startPresenceListener(myUid, viewerRole, centerGetter, opts = {}) {
   stopPresenceListener();
   if (typeof db === "undefined" || !db) return;
+
+  const viewerVerified = !!opts.viewerVerified;
+  const showOtherDrivers = !!opts.showOtherDrivers; // driver terverifikasi lihat motor lain
+  const onDriverClick = typeof opts.onDriverClick === "function" ? opts.onDriverClick : null;
 
   const ref = db.ref("presence");
   const handler = (snap) => {
@@ -383,11 +387,9 @@ function startPresenceListener(myUid, viewerRole, centerGetter) {
     const now = Date.now();
     snap.forEach((child) => {
       const uid = child.key;
-      if (uid === myUid) return;
       const v = child.val() || {};
       if (v.lat == null || v.lng == null) return;
       const age = now - (v.lastSeen || 0);
-      // stale > 30 menit abaikan (kecuali ghost dalam toleransi)
       if (age > 30 * 60 * 1000 && v.status !== "ghost") return;
       if (v.status === "ghost" && age > 24 * 60 * 60 * 1000) return;
 
@@ -395,38 +397,85 @@ function startPresenceListener(myUid, viewerRole, centerGetter) {
         { lat: base.lat, lng: base.lng },
         { lat: Number(v.lat), lng: Number(v.lng) }
       );
-      if (dist > NEARBY_RADIUS_KM) return;
+      // radius sedikit lebih longgar untuk driver peer
+      const maxKm = v.role === "driver" && viewerRole === "driver" ? 12 : NEARBY_RADIUS_KM;
+      if (dist > maxKm) return;
 
+      // —— DRIVER VIEWER ——
       if (viewerRole === "driver") {
-        // Driver melihat pelanggan
-        if (v.role === "driver") return;
-        const st = v.status || "logged_in";
-        const m = L.marker([v.lat, v.lng], {
-          icon: passengerDotIcon(st),
-          interactive: true
-        }).addTo(map);
-        m.bindPopup(
-          `<strong>Pelanggan</strong><br>${labelsStatus(st)}<br>~${dist.toFixed(1)} km`
-        );
-        presenceMarkers.push(m);
-      } else {
-        // Penumpang melihat driver online
-        if (v.role !== "driver") return;
-        if (v.status === "ghost" || v.status === "offline") return;
-        // hanya yang online / logged
-        if (v.isOnline === false) return;
-        const verified = !!v.identityVerified;
-        const m = L.marker([v.lat, v.lng], {
-          icon: driverBikeIcon(verified),
-          interactive: true
-        }).addTo(map);
-        m.bindPopup(
-          `<strong>Driver ${verified ? "✓" : ""}</strong><br>${
-            verified ? "Terverifikasi" : "Belum diverifikasi"
-          }<br>~${dist.toFixed(1)} km`
-        );
-        presenceMarkers.push(m);
+        // Pelanggan (selalu)
+        if (v.role !== "driver" && uid !== myUid) {
+          const st = v.status || "logged_in";
+          const m = L.marker([v.lat, v.lng], {
+            icon: passengerDotIcon(st),
+            interactive: true
+          }).addTo(map);
+          m.bindPopup(
+            `<strong>Pelanggan</strong><br>${labelsStatus(st)}<br>~${dist.toFixed(1)} km`
+          );
+          presenceMarkers.push(m);
+          return;
+        }
+        // Driver lain + diri sendiri (hanya jika terverifikasi)
+        if (v.role === "driver" && showOtherDrivers) {
+          if (v.status === "ghost" || v.status === "offline") return;
+          if (v.isOnline === false && uid !== myUid) return;
+          const verified = !!v.identityVerified;
+          const isSelf = uid === myUid;
+          const icon = isSelf
+            ? L.divIcon({
+                className: "driver-marker",
+                html: '<div class="bike-pin self" title="Lokasi saya">🛵</div>',
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+              })
+            : driverBikeIcon(verified);
+          const m = L.marker([v.lat, v.lng], { icon, interactive: true, zIndexOffset: isSelf ? 500 : 0 }).addTo(map);
+          const name = isSelf ? "Saya (lokasi Anda)" : (v.fullName || "Driver");
+          m.bindPopup(
+            `<strong>${name}${verified ? " ✓" : ""}</strong><br>` +
+            `${isSelf ? "Titik motor Anda" : (verified ? "Driver terverifikasi" : "Belum diverifikasi")}<br>` +
+            `~${dist.toFixed(1)} km` +
+            (v.rating ? `<br>⭐ ${Number(v.rating).toFixed(1)}` : "")
+          );
+          presenceMarkers.push(m);
+        }
+        return;
       }
+
+      // —— PASSENGER VIEWER ——
+      if (uid === myUid) return;
+      if (v.role !== "driver") return;
+      if (v.status === "ghost" || v.status === "offline") return;
+      if (v.isOnline === false) return;
+      const verified = !!v.identityVerified;
+      const m = L.marker([v.lat, v.lng], {
+        icon: driverBikeIcon(verified),
+        interactive: true
+      }).addTo(map);
+      const stars = v.rating != null ? `⭐ ${Number(v.rating).toFixed(1)}` : "";
+      m.bindPopup(
+        `<strong>Driver ${verified ? "✓" : ""}</strong><br>` +
+        `${verified ? "Terverifikasi" : "Belum diverifikasi"}<br>` +
+        `~${dist.toFixed(1)} km` +
+        (stars ? `<br>${stars}` : "") +
+        (viewerVerified
+          ? `<br><button type="button" class="popup-driver-btn" data-driver-uid="${uid}">Lihat profil</button>`
+          : `<br><small>Verifikasi akun untuk lihat profil & pesan langsung</small>`)
+      );
+      if (viewerVerified && onDriverClick) {
+        m.on("click", () => onDriverClick(uid, v, dist));
+        m.on("popupopen", () => {
+          const btn = document.querySelector(`.popup-driver-btn[data-driver-uid="${uid}"]`);
+          if (btn) {
+            btn.onclick = (e) => {
+              e.preventDefault();
+              onDriverClick(uid, v, dist);
+            };
+          }
+        });
+      }
+      presenceMarkers.push(m);
     });
   };
 

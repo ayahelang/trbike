@@ -44,6 +44,7 @@ async function createRide(passengerId, data, fareResult) {
       rulesVersion: fareResult.rulesVersion
     },
     paymentMethod: data.paymentMethod || "cash",
+    preferredDriverId: data.preferredDriverId || null,
     serviceFeePaid: !!data.serviceFeePaid,
     paymentProofUrl: data.paymentProofUrl || null,
     tip: 0,
