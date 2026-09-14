@@ -177,13 +177,50 @@ async function renderApp() {
   }
 }
 
+function roleLabel(role) {
+  if (role === "driver") return "Driver";
+  if (role === "admin") return "Admin";
+  return "Penumpang";
+}
+
 function updateUserChip(p) {
   if (!p) return;
   const name = (p.fullName || "User").split(" ")[0];
+  const role = p.role || "passenger";
+  const verified = !!p.identityVerified;
+  const vStatus = p.verificationStatus || "none";
+
   const nameEl = $("userChipName");
-  if (nameEl) nameEl.textContent = name + (p.identityVerified ? " ✓" : "");
+  if (nameEl) nameEl.textContent = name;
+
+  const meta = $("userChipMeta");
+  if (meta) {
+    if (verified) {
+      meta.textContent = roleLabel(role) + " · Terverifikasi";
+      meta.className = "chip-meta verified";
+    } else if (vStatus === "pending") {
+      meta.textContent = roleLabel(role) + " · Menunggu verifikasi";
+      meta.className = "chip-meta pending";
+    } else {
+      meta.textContent = roleLabel(role) + " · Belum verifikasi";
+      meta.className = "chip-meta unverified";
+    }
+  }
+
+  const chip = $("userChip");
+  if (chip) {
+    chip.classList.remove("role-passenger", "role-driver", "role-admin");
+    chip.classList.add("role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger"));
+  }
+
+  document.body.classList.remove("role-passenger", "role-driver", "role-admin");
+  document.body.classList.add("role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger"));
+
   const av = $("userAvatar");
   if (av) {
+    av.classList.remove("verified", "unverified", "role-passenger", "role-driver", "role-admin", "has-photo");
+    av.classList.add(verified ? "verified" : "unverified");
+    av.classList.add("role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger"));
     const photo = p.photoURL || p.kyc?.selfieUrl;
     if (photo && !String(photo).startsWith("local:")) {
       av.style.backgroundImage = "url(" + photo + ")";
@@ -191,7 +228,6 @@ function updateUserChip(p) {
       av.classList.add("has-photo");
     } else {
       av.style.backgroundImage = "";
-      av.classList.remove("has-photo");
       av.textContent = (name[0] || "?").toUpperCase();
     }
   }
@@ -640,17 +676,42 @@ window.handleCompleteRide = async function (rideId) {
 function renderProfile() {
   const p = currentProfile;
   const st = p.verificationStatus || "none";
+  const role = p.role || "passenger";
+  const verified = !!p.identityVerified;
+  const name = (p.fullName || "User").split(" ")[0];
+  const photo = p.photoURL || p.kyc?.selfieUrl;
+  const avClass = [
+    "profile-avatar-lg",
+    verified ? "verified" : "unverified",
+    "role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger"),
+    photo && !String(photo).startsWith("local:") ? "has-photo" : ""
+  ].filter(Boolean).join(" ");
+  const avStyle = photo && !String(photo).startsWith("local:")
+    ? 'style="background-image:url(' + photo + ')"'
+    : "";
+  const avText = photo && !String(photo).startsWith("local:") ? "" : (name[0] || "?").toUpperCase();
+  const roleHtml =
+    role === "driver"
+      ? '<span class="role-pill driver">Driver</span>'
+      : role === "admin"
+      ? '<span class="role-pill admin">Admin</span>'
+      : '<span class="role-pill passenger">Penumpang</span>';
+  const verHtml = verified
+    ? '<span class="badge online">✓ Terverifikasi</span>'
+    : st === "pending"
+    ? '<span class="badge status-requested">Menunggu review</span>'
+    : '<span class="badge muted">Belum verifikasi</span>';
+
   $("profileBody").innerHTML = `
+    <div style="text-align:center;margin-bottom:12px">
+      <div class="${avClass}" ${avStyle}>${avText}</div>
+      <div style="font-weight:800;font-size:1.05rem">${escapeHtml(p.fullName || "—")}</div>
+      <div style="margin-top:6px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${roleHtml}${verHtml}</div>
+    </div>
     <div class="detail-grid">
-      <div><span class="k">Nama</span>${escapeHtml(p.fullName)}</div>
-      <div><span class="k">Role</span>${p.role}</div>
-      <div><span class="k">Verifikasi</span>${
-        p.identityVerified
-          ? '<span class="badge online">Terverifikasi</span>'
-          : st === "pending"
-          ? '<span class="badge status-requested">Menunggu</span>'
-          : '<span class="badge muted">Belum</span>'
-      }</div>
+      <div><span class="k">Peran</span>${roleHtml}</div>
+      <div><span class="k">Status identitas</span>${verHtml}</div>
+      <div><span class="k">Email / akun</span>${escapeHtml(p.email || p.phone || "—")}</div>
     </div>`;
   if ($("profileGender")) $("profileGender").value = p.gender || "";
   $("profileMsg").textContent = "";

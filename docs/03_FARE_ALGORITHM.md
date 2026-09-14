@@ -1,8 +1,8 @@
-# TRBike — Algoritma Tarif v2.3
+# TRBike — Algoritma Tarif v2.4
 
 ## Tarif BBM per KM
-- **Jam sibuk (default)**: Rp 700 / km  
-- **Jam tidak sibuk**: Rp 550 / km  
+- **Jam sibuk (default)**: Rp 850 / km  
+- **Jam tidak sibuk**: Rp 600 / km  
   - 09:00 – 11:00  
   - 14:00 – 16:00  
 

@@ -1,14 +1,14 @@
 {
   "fareRules": {
     "current": {
-      "fuelPerKmPeak": 700,
-      "fuelPerKmOffPeak": 550,
+      "fuelPerKmPeak": 850,
+      "fuelPerKmOffPeak": 600,
       "perawatanPercent": 0.10,
       "makanKesehatanPercent": 0.13,
       "jasaDriverPercent": 0.77,
       "serviceFeePercent": 0.10,
       "taxPercent": 0.11,
-      "version": "2.3.0-bbm700-offpeak550-svc10"
+      "version": "2.4.0-bbm850-offpeak600-svc10"
     }
   }
 }

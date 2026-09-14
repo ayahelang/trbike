@@ -43,10 +43,21 @@ body.map-mode { overflow: hidden; background: #ddd; }
 }
 .btn-top.ghost { background: #fff1f2; color: #991b1b; }
 .user-chip {
-  background: #fff; padding: 8px 12px; border-radius: 999px;
+  background: #fff; padding: 6px 12px 6px 6px; border-radius: 999px;
   font-size: 0.78rem; font-weight: 600; box-shadow: var(--shadow);
-  max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 2px solid transparent;
+  gap: 8px;
 }
+.user-chip.role-passenger { border-color: #93c5fd; background: #eff6ff; }
+.user-chip.role-driver { border-color: #86efac; background: #f0fdf4; }
+.user-chip.role-admin { border-color: #fcd34d; background: #fffbeb; }
+.chip-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; min-width: 0; }
+#userChipName { font-weight: 700; font-size: 0.8rem; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.chip-meta { font-size: 0.65rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.chip-meta.verified { color: #15803d; }
+.chip-meta.unverified { color: #9a6700; }
+.chip-meta.pending { color: #a16207; }
 
 /* Sheet */
 .sheet {
@@ -420,13 +431,12 @@ textarea {
   display: inline-flex !important;
   align-items: center;
   gap: 8px;
-  border: none;
   cursor: pointer;
   font: inherit;
 }
 .user-avatar {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: #e5e7eb;
   color: var(--ink);
@@ -438,11 +448,80 @@ textarea {
   background-size: cover;
   background-position: center;
   flex-shrink: 0;
+  position: relative;
+  border: 2px solid #d1d5db;
+  box-sizing: border-box;
 }
 .user-avatar.has-photo { color: transparent; }
+.user-avatar.verified {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+.user-avatar.verified::after {
+  content: "✓";
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 14px;
+  text-align: center;
+  border: 1.5px solid #fff;
+}
+.user-avatar.unverified {
+  border-color: #d1d5db;
+  opacity: 0.95;
+}
+.user-avatar.role-driver { background: #dcfce7; color: #166534; }
+.user-avatar.role-passenger { background: #dbeafe; color: #1e40af; }
+.user-avatar.role-admin { background: #fef3c7; color: #92400e; }
+
+/* Role theming on sheets */
+body.role-driver .sheet { border-top: 3px solid #22c55e; }
+body.role-passenger .sheet { border-top: 3px solid #3b82f6; }
+.role-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.7rem; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: 0.03em;
+}
+.role-pill.driver { background: #dcfce7; color: #166534; }
+.role-pill.passenger { background: #dbeafe; color: #1e40af; }
+.role-pill.admin { background: #fef3c7; color: #92400e; }
+.badge.muted { background: #f0f1f3; color: var(--muted); }
+.profile-avatar-lg {
+  width: 64px; height: 64px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; font-weight: 800; margin-bottom: 8px;
+  background-size: cover; background-position: center;
+  border: 3px solid #d1d5db; position: relative;
+}
+.profile-avatar-lg.verified { border-color: #22c55e; }
+.profile-avatar-lg.verified::after {
+  content: "✓"; position: absolute; right: -2px; bottom: -2px;
+  width: 20px; height: 20px; border-radius: 50%; background: #16a34a;
+  color: #fff; font-size: 12px; line-height: 20px; text-align: center;
+  border: 2px solid #fff; font-weight: 900;
+}
+.profile-avatar-lg.role-driver { background: #dcfce7; color: #166534; }
+.profile-avatar-lg.role-passenger { background: #dbeafe; color: #1e40af; }
 
 .admin-card { max-width: 520px; max-height: 92vh; }
 .admin-periods { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .admin-periods .btn { width: auto; padding: 8px 12px; font-size: 0.8rem; }
 .admin-tx { max-height: 220px; overflow-y: auto; }
 .brand { cursor: pointer; user-select: none; }
+
+.sheet-role-banner {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 0 4px 10px; margin-bottom: 4px;
+}
+.sheet-role-banner .sheet-role-hint {
+  font-size: 0.72rem; color: var(--muted); font-weight: 500;
+}
+.sheet-role-banner.passenger { border-bottom: 1px solid #dbeafe; margin-bottom: 10px; padding-bottom: 10px; }
+.sheet-role-banner.driver { border-bottom: 1px solid #dcfce7; margin-bottom: 10px; padding-bottom: 10px; }

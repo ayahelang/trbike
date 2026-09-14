@@ -1,20 +1,20 @@
 /**
- * TRBike Fare v2.3
- * BBM peak/default: Rp 700/km
- * BBM off-peak: Rp 550/km (09:00–11:00 & 14:00–16:00)
+ * TRBike Fare v2.4
+ * BBM peak/default: Rp 850/km
+ * BBM off-peak: Rp 600/km (09:00–11:00 & 14:00–16:00)
  * Rincian tarif ditampilkan ke pelanggan sesuai skema komponen.
  */
 
 const DEFAULT_FARE_RULES = {
-  fuelPerKmPeak: 700,
-  fuelPerKmOffPeak: 550,
+  fuelPerKmPeak: 850,
+  fuelPerKmOffPeak: 600,
   perawatanPercent: 0.1,
   makanKesehatanPercent: 0.13,
   jasaDriverPercent: 0.77,
   serviceFeePercent: 0.1,
   taxPercent: 0.11,
   classMultipliers: { standard: 1, comfort: 1.1, premium: 1.2 },
-  version: "2.3.0-bbm700-offpeak550-svc10"
+  version: "2.4.0-bbm850-offpeak600-svc10"
 };
 
 /** Off-peak: 09:00–11:00 dan 14:00–16:00 (waktu lokal) */
@@ -27,8 +27,8 @@ function isOffPeakHour(date = new Date()) {
 
 function getFuelPerKm(rules = DEFAULT_FARE_RULES, date = new Date()) {
   return isOffPeakHour(date)
-    ? rules.fuelPerKmOffPeak || 550
-    : rules.fuelPerKmPeak || 700;
+    ? rules.fuelPerKmOffPeak || 600
+    : rules.fuelPerKmPeak || 850;
 }
 
 function calculateFare(tripKm, pickupKm, serviceClass = "standard", rules = DEFAULT_FARE_RULES, at = new Date()) {

@@ -34,7 +34,10 @@
     <div class="topbar-actions">
       <button id="userChip" class="user-chip hidden" type="button" title="Buka profil">
         <span id="userAvatar" class="user-avatar">?</span>
-        <span id="userChipName">User</span>
+        <span class="chip-text">
+          <span id="userChipName">User</span>
+          <span id="userChipMeta" class="chip-meta"></span>
+        </span>
       </button>
       <button id="authOpenBtn" class="btn-top" type="button">Masuk</button>
       <button id="logoutBtn" class="btn-top ghost hidden" type="button">Keluar</button>
@@ -44,6 +47,7 @@
   <!-- PASSENGER -->
   <div id="passengerSheet" class="sheet">
     <div class="sheet-handle"></div>
+    <div class="sheet-role-banner passenger"><span class="role-pill passenger">Penumpang / Pelanggan</span> <span class="sheet-role-hint">Antar · Belanja · Paket</span></div>
 
     <div id="stepSearch" class="sheet-step">
       <label class="field-label">Mau ke mana?</label>
@@ -100,6 +104,7 @@
   <!-- DRIVER -->
   <div id="driverSheet" class="sheet hidden">
     <div class="sheet-handle"></div>
+    <div class="sheet-role-banner driver"><span class="role-pill driver">Driver / Mitra</span> <span class="sheet-role-hint">Siap antar penumpang & paket</span></div>
     <div class="driver-status-row">
       <span id="onlineStatus" class="badge offline">OFFLINE</span>
       <button id="toggleOnline" class="primary sm" type="button">Go Online</button>
