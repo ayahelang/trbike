@@ -270,7 +270,7 @@ function openOrderDetail(rideId) {
       <div><span class="k">ETA</span><span>${eta}</span></div>
       <div><span class="k">Tarif</span><span><strong>${formatRupiah(r.fare?.total || 0)}</strong></span></div>
       <div><span class="k">Biaya layanan</span><span>${formatRupiah(r.fare?.serviceFee || 0)}</span></div>
-      <div><span class="k">Pendapatan bersih</span><span>${formatRupiah(r.fare?.driverGross || 0)}</span></div>
+      
       ${r.tip ? `<div><span class="k">Tips</span><span>${formatRupiah(r.tip)}</span></div>` : ""}
     </div>`;
 
@@ -338,24 +338,19 @@ async function onCheckFare() {
     lastQuote = calculateFare(tripKm, pickupKm, "standard", rules);
     $("quoteCard").innerHTML = `
       <div class="price">${formatRupiah(lastQuote.total)}</div>
-      <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km · BBM Rp${lastQuote.fuelPerKm}/km</div>
+      <div class="meta">~${lastRoute.minutes} mnt · ${tripKm} km · jemput ~${pickupKm} km
+        · BBM ${lastQuote.offPeak ? "luang" : "sibuk"} Rp${lastQuote.fuelPerKm}/km</div>
       <div class="row"><span>BBM perjalanan</span><span>${formatRupiah(lastQuote.tripFuel)}</span></div>
       <div class="row"><span>BBM penjemputan</span><span>${formatRupiah(lastQuote.pickupFuel)}</span></div>
-      <div class="row"><span>Perawatan kendaraan (10%)</span><span>${formatRupiah(lastQuote.perawatan)}</span></div>
-      <div class="row"><span>Makan & kesehatan (13%)</span><span>${formatRupiah(lastQuote.makanKesehatan)}</span></div>
-      <div class="row"><span>Jasa driver (77%)</span><span>${formatRupiah(lastQuote.jasaDriver)}</span></div>
-      <div class="row"><span>Pendapatan bersih driver</span><span>${formatRupiah(lastQuote.pendapatanBersih)}</span></div>
-      <div class="row"><span>Biaya layanan (TRBike)</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
-      <div class="row"><span>Tarif sebelum PPN</span><span>${formatRupiah(lastQuote.beforePpn)}</span></div>
-      <div class="row"><span>PPN 11%</span><span>${formatRupiah(lastQuote.tax)}</span></div>
-      <div class="row total"><span>Total dibayar penumpang</span><span>${formatRupiah(lastQuote.total)}</span></div>`;
-    // Instruksi TF/QRIS = nominal biaya layanan
+      <div class="row"><span>Biaya layanan</span><span>${formatRupiah(lastQuote.serviceFee)}</span></div>
+      <div class="row"><span>PPN</span><span>${formatRupiah(lastQuote.tax)}</span></div>
+      <div class="row total"><span>Total</span><span>${formatRupiah(lastQuote.total)}</span></div>`;
     const feeHint = $("serviceFeeHint");
     if (feeHint) {
       feeHint.innerHTML =
         "Transfer/QRIS <strong>biaya layanan " +
         formatRupiah(lastQuote.serviceFee) +
-        "</strong> ke Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong> (atau scan QRIS di bawah).";
+        "</strong> ke Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong> (atau scan QRIS).";
     }
     showStep("stepQuote");
   } catch (err) {
@@ -486,7 +481,54 @@ function setupDriver() {
   unsubRides = listenRequestedRides(renderDriverOrders);
   unsubActive = listenDriverActiveRides(currentProfile.uid, renderDriverActive);
   unsubFeedback = listenDriverFeedback(currentProfile.uid, renderDriverFeedback);
+  if (window._unsubDriverHist) window._unsubDriverHist();
+  window._unsubDriverHist = listenDriverHistory(currentProfile.uid, renderDriverHistory);
 }
+
+function fmtTime(ts) {
+  if (!ts) return "—";
+  return new Date(ts).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" });
+}
+
+function punctualityLabel(p) {
+  const map = {
+    tepat_waktu: "Tepat waktu",
+    terlambat_jemput: "Terlambat jemput",
+    terlambat_tujuan: "Terlambat sampai tujuan",
+    terlambat_jemput_dan_tujuan: "Terlambat jemput & tujuan"
+  };
+  return map[p] || p || "—";
+}
+
+function renderDriverHistory(list) {
+  const box = $("driverHistory");
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = '<div class="empty">Belum ada riwayat trip.</div>';
+    return;
+  }
+  box.innerHTML = list.map((r) => {
+    const earn = r.status === "completed"
+      ? (Number(r.fare?.driverGross || 0) + Number(r.tip || 0))
+      : Number(r.cancelCharge?.amount || 0);
+    const km = (Number(r.tripDistanceKm || 0) + Number(r.pickupDistanceKm || 0)).toFixed(1);
+    return `<div class="item">
+      <div class="row">
+        <b>${escapeHtml(r.destinationText || "Trip")}</b>
+        <span class="badge status-${r.status}">${statusLabel(r.status)}</span>
+      </div>
+      <div class="sub">Jemput: ${escapeHtml(r.pickupText || "—")}</div>
+      <div class="meta">
+        ${km} km total · Order ${fmtTime(r.createdAt)}
+        · Accept ${fmtTime(r.acceptedAt)}
+        · Selesai ${fmtTime(r.completedAt || r.cancelledAt)}
+      </div>
+      <div class="meta">ETA ~${r.etaMinutes || "—"} mnt · ${punctualityLabel(r.punctuality)}</div>
+      <div class="meta">Pendapatan ${formatRupiah(earn)}${r.tip ? " (tips " + formatRupiah(r.tip) + ")" : ""}</div>
+    </div>`;
+  }).join("");
+}
+
 
 async function loadDriverDashboard() {
   const d = await getDriverProfile(currentProfile.uid);

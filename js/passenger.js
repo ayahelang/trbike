@@ -64,7 +64,7 @@ async function cancelRide(rideId, passengerId, options = {}) {
   // Jika driver sudah accept → charge 2× BBM jarak jemput yang sudah diestimasi
   if (ride.status === "accepted" || ride.status === "in_trip" || ride.status === "driver_arriving") {
     const rules = typeof getFareRules === "function" ? await getFareRules() : null;
-    const fuelPerKm = rules?.fuelPerKm || 350;
+    const fuelPerKm = (typeof getFuelPerKm === 'function' ? getFuelPerKm(rules || {}) : (rules?.fuelPerKmPeak || 700));
     // Jarak tempuh jemput: pakai pickupDistanceKm (MVP); produksi = GPS aktual
     const traveled = Number(options.traveledKm != null ? options.traveledKm : ride.pickupDistanceKm) || 0;
     const charge = Math.ceil((traveled * fuelPerKm * 2) / 500) * 500;

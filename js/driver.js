@@ -94,9 +94,24 @@ async function completeRide(rideId, driverId) {
 
   const driverGross = ride.fare?.driverGross || 0;
 
+  const completedAt = Date.now();
+  const etaMin = Number(ride.etaMinutes) || 0;
+  const acceptedAt = ride.acceptedAt || ride.createdAt || completedAt;
+  const expectedArrival = acceptedAt + etaMin * 60 * 1000;
+  const lateArrival = etaMin > 0 ? completedAt > expectedArrival + 2 * 60 * 1000 : false;
+  // jemput: jika accept terlalu lama setelah order (> 15 mnt) dianggap terlambat jemput (MVP)
+  const latePickup = ride.createdAt ? acceptedAt - ride.createdAt > 15 * 60 * 1000 : false;
+  let punctuality = "tepat_waktu";
+  if (latePickup && lateArrival) punctuality = "terlambat_jemput_dan_tujuan";
+  else if (latePickup) punctuality = "terlambat_jemput";
+  else if (lateArrival) punctuality = "terlambat_tujuan";
+
   await rideRef.update({
     status: "completed",
-    completedAt: Date.now()
+    completedAt,
+    latePickup,
+    lateArrival,
+    punctuality
   });
 
   // Tambah hak driver ke wallet
@@ -129,4 +144,22 @@ function listenDriverFeedback(driverId, callback) {
 
 async function updateDriverPrefs(uid, prefs) {
   await db.ref("drivers/" + uid + "/prefs").update(prefs);
+}
+
+
+/** Riwayat trip driver (completed + cancelled yang pernah diambil) */
+function listenDriverHistory(driverId, callback, limit = 40) {
+  const ref = db.ref("rides").orderByChild("driverId").equalTo(driverId);
+  ref.on("value", (snap) => {
+    const list = [];
+    snap.forEach((c) => {
+      const r = c.val();
+      if (r.status === "completed" || r.status === "cancelled") {
+        list.push({ id: c.key, ...r });
+      }
+    });
+    list.sort((a, b) => (b.completedAt || b.cancelledAt || b.createdAt || 0) - (a.completedAt || a.cancelledAt || a.createdAt || 0));
+    callback(list.slice(0, limit));
+  });
+  return () => ref.off();
 }
