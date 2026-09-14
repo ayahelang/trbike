@@ -129,3 +129,36 @@ async function submitKyc(uid, { selfieUrl, ktpUrl }) {
 function onAuthStateChanged(callback) {
   return auth.onAuthStateChanged(callback);
 }
+
+
+/** Hapus data akun sendiri + coba hapus Auth user */
+async function deleteMyAccount() {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Belum login");
+  const uid = user.uid;
+  try {
+    await db.ref("presence/" + uid).remove();
+  } catch (_) {}
+  try {
+    await db.ref("drivers/" + uid).remove();
+  } catch (_) {}
+  try {
+    await db.ref("users/" + uid).remove();
+  } catch (e) {
+    console.warn(e);
+  }
+  try {
+    await user.delete();
+  } catch (e) {
+    // Butuh login ulang baru-baru ini
+    const code = e.code || "";
+    if (code.includes("requires-recent-login")) {
+      await auth.signOut();
+      throw new Error(
+        "Data profil dihapus. Login ulang lalu hapus lagi untuk menghapus akun Auth, atau hubungi admin."
+      );
+    }
+    await auth.signOut();
+    throw e;
+  }
+}

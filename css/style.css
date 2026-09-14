@@ -525,3 +525,56 @@ body.role-passenger .sheet { border-top: 3px solid #3b82f6; }
 }
 .sheet-role-banner.passenger { border-bottom: 1px solid #dbeafe; margin-bottom: 10px; padding-bottom: 10px; }
 .sheet-role-banner.driver { border-bottom: 1px solid #dcfce7; margin-bottom: 10px; padding-bottom: 10px; }
+
+/* Chip nama: satu kata, expand hover */
+#userChipName {
+  max-width: 5.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  transition: max-width 0.25s ease;
+}
+.user-chip:hover #userChipName,
+.user-chip:focus #userChipName {
+  max-width: 220px;
+}
+.user-chip:hover {
+  max-width: 280px;
+  z-index: 30;
+}
+.v-no {
+  color: #b45309;
+  cursor: help;
+  font-size: 0.85em;
+}
+.v-ok { color: #15803d; }
+.v-pending { color: #a16207; }
+
+/* Driver bike icons */
+.bike-pin.verified {
+  background: #fff;
+  border-color: #16a34a;
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
+}
+.bike-pin.unverified {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+  color: #6b7280;
+  filter: grayscale(0.4);
+  opacity: 0.95;
+}
+
+/* Passenger presence dots */
+.pax-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.pax-dot.ghost { background: #c4b5fd; } /* ungu pucat */
+.pax-dot.app-open { background: #86efac; } /* hijau pucat */
+.pax-dot.logged-in { background: #22c55e; } /* hijau */
+.pax-dot.ordering { background: #eab308; } /* kuning */
+.pax-dot.waiting { background: #ef4444; } /* merah */

@@ -281,23 +281,169 @@ function clearRoute() {
   }
 }
 
-/** Demo driver icons around user (MVP visual) */
+/** Radius km untuk marker terdekat di peta */
+const NEARBY_RADIUS_KM = 5;
+let presenceMarkers = [];
+let presenceUnsub = null;
+
+function haversineKm(a, b) {
+  if (!a || !b) return 999;
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function driverBikeIcon(verified) {
+  const cls = verified ? "bike-pin verified" : "bike-pin unverified";
+  const title = verified ? "Driver terverifikasi" : "Driver belum diverifikasi";
+  return L.divIcon({
+    className: "driver-marker",
+    html: `<div class="${cls}" title="${title}">🛵</div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18]
+  });
+}
+
+function passengerDotIcon(status) {
+  // ghost | app_open | logged_in | ordering | waiting
+  const map = {
+    ghost: "pax-dot ghost",
+    app_open: "pax-dot app-open",
+    logged_in: "pax-dot logged-in",
+    ordering: "pax-dot ordering",
+    waiting: "pax-dot waiting"
+  };
+  const labels = {
+    ghost: "Jejak pelanggan (belum buka app)",
+    app_open: "Pelanggan membuka aplikasi",
+    logged_in: "Pelanggan login",
+    ordering: "Sedang input pesanan",
+    waiting: "Menunggu driver"
+  };
+  const cls = map[status] || map.logged_in;
+  const title = labels[status] || labels.logged_in;
+  return L.divIcon({
+    className: "driver-marker",
+    html: `<div class="${cls}" title="${title}"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9]
+  });
+}
+
+/** Legacy demo — diganti showPresenceMarkers */
 function showNearbyDrivers(center, count = 5) {
-  clearDriverMarkers();
-  if (!center) return;
-  for (let i = 0; i < count; i++) {
-    const offset = 0.004 + Math.random() * 0.012;
-    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
-    const lat = center.lat + offset * Math.cos(angle);
-    const lng = center.lng + offset * Math.sin(angle);
-    const m = L.marker([lat, lng], { icon: DRIVER_ICON }).addTo(map);
-    driverMarkers.push(m);
-  }
+  // no-op: presence real-time menggantikan demo
+  if (center && map) map.setView([center.lat, center.lng], map.getZoom() || 14);
 }
 
 function clearDriverMarkers() {
-  driverMarkers.forEach((m) => map.removeLayer(m));
+  presenceMarkers.forEach((m) => {
+    try { map.removeLayer(m); } catch (_) {}
+  });
+  presenceMarkers = [];
+  driverMarkers.forEach((m) => {
+    try { map.removeLayer(m); } catch (_) {}
+  });
   driverMarkers = [];
+}
+
+function clearPresenceMarkers() {
+  clearDriverMarkers();
+}
+
+function stopPresenceListener() {
+  if (presenceUnsub) {
+    try { presenceUnsub(); } catch (_) {}
+    presenceUnsub = null;
+  }
+  clearPresenceMarkers();
+}
+
+/**
+ * Dengarkan presence terdekat.
+ * viewerRole: "driver" → lihat penumpang; "passenger" → lihat driver
+ */
+function startPresenceListener(myUid, viewerRole, centerGetter) {
+  stopPresenceListener();
+  if (typeof db === "undefined" || !db) return;
+
+  const ref = db.ref("presence");
+  const handler = (snap) => {
+    const center = typeof centerGetter === "function" ? centerGetter() : null;
+    const base = center || (map ? map.getCenter() : null);
+    if (!base) return;
+    clearPresenceMarkers();
+    const now = Date.now();
+    snap.forEach((child) => {
+      const uid = child.key;
+      if (uid === myUid) return;
+      const v = child.val() || {};
+      if (v.lat == null || v.lng == null) return;
+      const age = now - (v.lastSeen || 0);
+      // stale > 30 menit abaikan (kecuali ghost dalam toleransi)
+      if (age > 30 * 60 * 1000 && v.status !== "ghost") return;
+      if (v.status === "ghost" && age > 24 * 60 * 60 * 1000) return;
+
+      const dist = haversineKm(
+        { lat: base.lat, lng: base.lng },
+        { lat: Number(v.lat), lng: Number(v.lng) }
+      );
+      if (dist > NEARBY_RADIUS_KM) return;
+
+      if (viewerRole === "driver") {
+        // Driver melihat pelanggan
+        if (v.role === "driver") return;
+        const st = v.status || "logged_in";
+        const m = L.marker([v.lat, v.lng], {
+          icon: passengerDotIcon(st),
+          interactive: true
+        }).addTo(map);
+        m.bindPopup(
+          `<strong>Pelanggan</strong><br>${labelsStatus(st)}<br>~${dist.toFixed(1)} km`
+        );
+        presenceMarkers.push(m);
+      } else {
+        // Penumpang melihat driver online
+        if (v.role !== "driver") return;
+        if (v.status === "ghost" || v.status === "offline") return;
+        // hanya yang online / logged
+        if (v.isOnline === false) return;
+        const verified = !!v.identityVerified;
+        const m = L.marker([v.lat, v.lng], {
+          icon: driverBikeIcon(verified),
+          interactive: true
+        }).addTo(map);
+        m.bindPopup(
+          `<strong>Driver ${verified ? "✓" : ""}</strong><br>${
+            verified ? "Terverifikasi" : "Belum diverifikasi"
+          }<br>~${dist.toFixed(1)} km`
+        );
+        presenceMarkers.push(m);
+      }
+    });
+  };
+
+  ref.on("value", handler);
+  presenceUnsub = () => ref.off("value", handler);
+}
+
+function labelsStatus(st) {
+  return (
+    {
+      ghost: "Jejak (belum buka app)",
+      app_open: "Membuka aplikasi",
+      logged_in: "Login di aplikasi",
+      ordering: "Input data pesanan",
+      waiting: "Menunggu driver"
+    }[st] || st
+  );
 }
 
 function getPickup() {

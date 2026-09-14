@@ -39,6 +39,11 @@ function setLoading(btn, loading) {
 
 function showStep(id) {
   ["stepSearch", "stepPins", "stepQuote", "stepSearching"].forEach((s) => show($(s), s === id));
+  if (typeof window._setPresenceStatus === "function" && currentProfile?.role !== "driver") {
+    if (id === "stepPins" || id === "stepQuote") window._setPresenceStatus("ordering");
+    else if (id === "stepSearching") window._setPresenceStatus("waiting");
+    else if (id === "stepSearch") window._setPresenceStatus("logged_in");
+  }
 }
 
 function openAuth() { show($("authModal"), true); }
@@ -175,6 +180,152 @@ async function renderApp() {
     show($("driverSheet"), false);
     setupPassenger();
   }
+  startPresenceForUser(currentProfile);
+}
+
+async function performLogout() {
+  try {
+    if (currentProfile?.uid) {
+      await markPresenceGhost(currentProfile.uid);
+      if (currentProfile.role === "driver") {
+        try { await setDriverOnline(currentProfile.uid, false); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  stopPresenceHeartbeat();
+  if (typeof stopPresenceListener === "function") stopPresenceListener();
+  if (typeof stopLiveTracking === "function") stopLiveTracking();
+  if (unsubRides) { try { unsubRides(); } catch (_) {} unsubRides = null; }
+  if (unsubActive) { try { unsubActive(); } catch (_) {} unsubActive = null; }
+  if (unsubFeedback) { try { unsubFeedback(); } catch (_) {} unsubFeedback = null; }
+  if (window._unsubDriverHist) { try { window._unsubDriverHist(); } catch (_) {} window._unsubDriverHist = null; }
+  await logoutUser();
+  applyLoggedOutUI();
+}
+
+function applyLoggedOutUI() {
+  currentProfile = null;
+  stopPresenceHeartbeat();
+  if (typeof stopPresenceListener === "function") stopPresenceListener();
+  if (typeof clearPresenceMarkers === "function") clearPresenceMarkers();
+  if (typeof clearDriverMarkers === "function") clearDriverMarkers();
+  if (typeof stopLiveTracking === "function") stopLiveTracking();
+  if (unsubRides) { try { unsubRides(); } catch (_) {} unsubRides = null; }
+  if (unsubActive) { try { unsubActive(); } catch (_) {} unsubActive = null; }
+  if (unsubFeedback) { try { unsubFeedback(); } catch (_) {} unsubFeedback = null; }
+  if (window._unsubDriverHist) { try { window._unsubDriverHist(); } catch (_) {} window._unsubDriverHist = null; }
+
+  document.body.classList.remove("role-passenger", "role-driver", "role-admin");
+  show($("authOpenBtn"), true);
+  show($("logoutBtn"), false);
+  show($("userChip"), false);
+  show($("passengerSheet"), true);
+  show($("driverSheet"), false);
+  showStep("stepSearch");
+  if ($("ordersPassenger")) $("ordersPassenger").innerHTML = "";
+  if ($("driverOrders")) $("driverOrders").innerHTML = "";
+  if ($("driverActive")) $("driverActive").innerHTML = "";
+  show($("stepOrders"), false);
+  closeOrderDetail();
+  closeProfile();
+  if ($("onlineStatus")) {
+    $("onlineStatus").textContent = "OFFLINE";
+    $("onlineStatus").className = "badge offline";
+  }
+}
+
+let presenceHeartTimer = null;
+let presenceWatchId = null;
+let lastPresenceCoords = null;
+
+function stopPresenceHeartbeat() {
+  if (presenceHeartTimer) {
+    clearInterval(presenceHeartTimer);
+    presenceHeartTimer = null;
+  }
+  if (presenceWatchId != null && navigator.geolocation) {
+    try { navigator.geolocation.clearWatch(presenceWatchId); } catch (_) {}
+    presenceWatchId = null;
+  }
+}
+
+async function writePresence(uid, patch) {
+  if (!uid || typeof db === "undefined") return;
+  const data = {
+    ...patch,
+    lastSeen: Date.now()
+  };
+  try {
+    await db.ref("presence/" + uid).update(data);
+  } catch (e) {
+    console.warn("presence", e.message);
+  }
+}
+
+async function markPresenceGhost(uid) {
+  if (!uid) return;
+  try {
+    await db.ref("presence/" + uid).update({
+      status: "ghost",
+      isOnline: false,
+      leftAt: Date.now(),
+      lastSeen: Date.now()
+    });
+  } catch (_) {}
+}
+
+function startPresenceForUser(profile) {
+  stopPresenceHeartbeat();
+  if (!profile?.uid) return;
+  const uid = profile.uid;
+  const role = profile.role || "passenger";
+
+  const push = async (status, extra = {}) => {
+    const center = lastPresenceCoords || (typeof getPickup === "function" ? getPickup() : null) || (map && map.getCenter());
+    if (!center) return;
+    lastPresenceCoords = { lat: center.lat, lng: center.lng };
+    await writePresence(uid, {
+      role,
+      status,
+      identityVerified: !!profile.identityVerified,
+      isOnline: role === "driver" ? extra.isOnline !== false : true,
+      lat: lastPresenceCoords.lat,
+      lng: lastPresenceCoords.lng,
+      fullName: (profile.fullName || "").split(" ")[0] || "",
+      ...extra
+    });
+  };
+
+  // geolocation watch
+  if (navigator.geolocation) {
+    presenceWatchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        lastPresenceCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+    );
+  }
+
+  // initial
+  push(role === "driver" ? "logged_in" : "logged_in");
+
+  presenceHeartTimer = setInterval(() => {
+    const st = window._presenceStatus || "logged_in";
+    push(st);
+  }, 20000);
+
+  window._setPresenceStatus = (st) => {
+    window._presenceStatus = st;
+    push(st);
+  };
+  window._presenceStatus = "logged_in";
+
+  // Map listener: lawan peran
+  const viewerRole = role === "driver" ? "driver" : "passenger";
+  if (typeof startPresenceListener === "function") {
+    startPresenceListener(uid, viewerRole, () => lastPresenceCoords || (map && map.getCenter()));
+  }
 }
 
 function roleLabel(role) {
@@ -185,24 +336,32 @@ function roleLabel(role) {
 
 function updateUserChip(p) {
   if (!p) return;
-  const name = (p.fullName || "User").split(" ")[0];
+  const fullName = p.fullName || "User";
+  const name = fullName.split(" ")[0];
   const role = p.role || "passenger";
   const verified = !!p.identityVerified;
   const vStatus = p.verificationStatus || "none";
 
   const nameEl = $("userChipName");
-  if (nameEl) nameEl.textContent = name;
+  if (nameEl) {
+    nameEl.textContent = name;
+    nameEl.title = fullName;
+    nameEl.dataset.fullName = fullName;
+  }
 
   const meta = $("userChipMeta");
   if (meta) {
+    const roleTxt = roleLabel(role);
     if (verified) {
-      meta.textContent = roleLabel(role) + " · Terverifikasi";
+      meta.innerHTML = roleTxt + ' · <span class="v-ok" title="Terverifikasi">✓</span>';
       meta.className = "chip-meta verified";
     } else if (vStatus === "pending") {
-      meta.textContent = roleLabel(role) + " · Menunggu verifikasi";
+      meta.innerHTML = roleTxt + ' · <span class="v-pending" title="Menunggu verifikasi">⏳</span>';
       meta.className = "chip-meta pending";
     } else {
-      meta.textContent = roleLabel(role) + " · Belum verifikasi";
+      meta.innerHTML =
+        roleTxt +
+        ' · <span class="v-no" title="Belum diverifikasi" aria-label="Belum diverifikasi">⚠</span>';
       meta.className = "chip-meta unverified";
     }
   }
@@ -210,17 +369,29 @@ function updateUserChip(p) {
   const chip = $("userChip");
   if (chip) {
     chip.classList.remove("role-passenger", "role-driver", "role-admin");
-    chip.classList.add("role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger"));
+    chip.classList.add(
+      "role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger")
+    );
+    chip.title = fullName + (verified ? " (Terverifikasi)" : " (Belum diverifikasi)");
   }
 
   document.body.classList.remove("role-passenger", "role-driver", "role-admin");
-  document.body.classList.add("role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger"));
+  document.body.classList.add(
+    "role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger")
+  );
 
   const av = $("userAvatar");
   if (av) {
     av.classList.remove("verified", "unverified", "role-passenger", "role-driver", "role-admin", "has-photo");
     av.classList.add(verified ? "verified" : "unverified");
-    av.classList.add("role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger"));
+    av.classList.add(
+      "role-" + (role === "admin" ? "admin" : role === "driver" ? "driver" : "passenger")
+    );
+    if (!verified) {
+      av.title = "Belum diverifikasi";
+    } else {
+      av.title = "Terverifikasi";
+    }
     const photo = p.photoURL || p.kyc?.selfieUrl;
     if (photo && !String(photo).startsWith("local:")) {
       av.style.backgroundImage = "url(" + photo + ")";
@@ -518,6 +689,22 @@ function setupDriver() {
         await db.ref("drivers/" + currentProfile.uid).update({
           lastLocation: { lat: p.lat, lng: p.lng, updatedAt: Date.now() }
         });
+      }
+      if (typeof window._setPresenceStatus === "function") {
+        window._setPresenceStatus(next ? "logged_in" : "offline");
+      }
+      if (currentProfile?.uid && typeof writePresence === "function") {
+        const c = lastPresenceCoords || getPickup() || (map && map.getCenter());
+        if (c) {
+          await writePresence(currentProfile.uid, {
+            role: "driver",
+            status: next ? "logged_in" : "offline",
+            isOnline: next,
+            identityVerified: !!currentProfile.identityVerified,
+            lat: c.lat,
+            lng: c.lng
+          });
+        }
       }
       toast(next ? "ONLINE" : "OFFLINE", "success");
       loadDriverDashboard();
@@ -887,14 +1074,12 @@ async function initApp() {
   });
 
   $("logoutBtn").onclick = async () => {
-    if (unsubRides) { unsubRides(); unsubRides = null; }
-    if (unsubActive) { unsubActive(); unsubActive = null; }
-    if (unsubFeedback) { unsubFeedback(); unsubFeedback = null; }
-    await logoutUser();
-    if ($("ordersPassenger")) $("ordersPassenger").innerHTML = "";
-    show($("stepOrders"), false);
-    closeOrderDetail();
-    toast("Berhasil keluar");
+    try {
+      await performLogout();
+      toast("Berhasil keluar");
+    } catch (e) {
+      toast(e.message || "Gagal keluar", "error");
+    }
   };
 
   const confBtn = $("confirmDestBtn");
@@ -1028,6 +1213,28 @@ async function initApp() {
     }
   };
 
+  $("deleteAccountBtn")?.addEventListener("click", async () => {
+    if (!currentProfile) return;
+    const ok = confirm(
+      "Hapus akun Anda secara permanen? Data profil & driver (jika ada) akan dihapus. Tindakan ini tidak bisa dibatalkan."
+    );
+    if (!ok) return;
+    const btn = $("deleteAccountBtn");
+    try {
+      if (btn) btn.disabled = true;
+      await deleteMyAccount();
+      applyLoggedOutUI();
+      closeProfile();
+      toast("Akun dihapus", "success");
+    } catch (err) {
+      $("profileMsg").textContent = err.message || "Gagal hapus akun";
+      toast(err.message || "Gagal hapus akun", "error");
+      applyLoggedOutUI();
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
+
   $("submitKycBtn").onclick = async () => {
     const btn = $("submitKycBtn");
     setLoading(btn, true);
@@ -1141,21 +1348,20 @@ async function initApp() {
 
   onAuthStateChanged(async (user) => {
     if (user) await renderApp();
-    else {
-      currentProfile = null;
-      if (unsubRides) { unsubRides(); unsubRides = null; }
-      if (unsubActive) { unsubActive(); unsubActive = null; }
-      if (unsubFeedback) { unsubFeedback(); unsubFeedback = null; }
-      show($("authOpenBtn"), true);
-      show($("logoutBtn"), false);
-      show($("userChip"), false);
-      show($("userChip"), false);
-      show($("passengerSheet"), true);
-      show($("driverSheet"), false);
-      showStep("stepSearch");
-      if ($("ordersPassenger")) $("ordersPassenger").innerHTML = "";
-      show($("stepOrders"), false);
-      closeOrderDetail();
+    else applyLoggedOutUI();
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if (currentProfile?.uid) {
+      try {
+        // best-effort ghost footprint
+        db.ref("presence/" + currentProfile.uid).update({
+          status: "ghost",
+          isOnline: false,
+          leftAt: Date.now(),
+          lastSeen: Date.now()
+        });
+      } catch (_) {}
     }
   });
 }
