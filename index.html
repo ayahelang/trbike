@@ -91,8 +91,10 @@
         <div class="pay-cash-info">
           <p class="hint-text" id="serviceFeeHint">Untuk aktifkan <strong>Cash</strong>, transfer/QRIS dulu <strong>biaya layanan + PPN</strong> (nominal muncul setelah Cek Tarif) ke Dana <strong>085159922358</strong> · Gopay <strong>085158822803</strong>, atau scan QRIS di bawah. Sisanya dibayar cash ke driver.</p>
           <div id="qrisBox" class="qris-box">
-            <img src="assets/qris.jpg" width="100" id="qrisImg" alt="QRIS TRBike" class="hidden" />
-            <p class="hint-text">Belum ada gambar QRIS. Admin bisa pasang di <code>assets/qris.jpg</code>.</p>
+            <div class="qris-frame">
+              <img id="qrisImg" src="assets/qris.jpg" alt="QRIS pembayaran TRBike" width="966" height="974" decoding="async" loading="lazy">
+            </div>
+            <p class="hint-text qris-caption">Scan QRIS di atas · Dana / Gopay</p>
           </div>
           <label>Upload bukti transfer biaya layanan + PPN
             <input type="file" id="feeProofFile" accept="image/*">

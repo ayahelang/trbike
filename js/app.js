@@ -1426,12 +1426,32 @@ async function initApp() {
   }
 
   initMap("map");
-  // QRIS static image optional
+  // QRIS: pastikan jpg tampil (file: assets/qris.jpg)
   const qimg = $("qrisImg");
   if (qimg) {
-    qimg.onload = () => { qimg.classList.remove("hidden"); };
-    qimg.onerror = () => {};
-    qimg.src = "assets/qris.png";
+    qimg.classList.remove("hidden");
+    const trySrc = ["assets/qris.jpg", "assets/qris.png", "assets/qris.jpeg", "assets/qris.webp"];
+    let i = 0;
+    const tryNext = () => {
+      if (i >= trySrc.length) {
+        const cap = document.querySelector(".qris-caption");
+        if (cap) cap.textContent = "Gambar QRIS belum ditemukan di folder assets/";
+        return;
+      }
+      qimg.onerror = () => { i++; tryNext(); };
+      qimg.onload = () => {
+        qimg.classList.remove("hidden");
+        qimg.style.display = "block";
+      };
+      // Jika src sudah benar, jangan reload sia-sia
+      if (!qimg.getAttribute("src") || qimg.getAttribute("src") !== trySrc[i]) {
+        qimg.src = trySrc[i];
+      } else {
+        // already jpg in HTML — ensure visible
+        qimg.style.display = "block";
+      }
+    };
+    tryNext();
   }
   bindDestinationSearch($("destInput"), $("suggestList"));
   window.onMapPinsChanged = () => updateConfirmBtn();
